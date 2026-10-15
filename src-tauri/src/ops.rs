@@ -3,7 +3,7 @@
 //! renames work. Nothing is deleted: a replaced file goes to the Recycle Bin.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -432,7 +432,22 @@ pub fn recover(journal: &Path, bin: &dyn Bin) -> io::Result<UndoReport> {
             break;
         }
     }
-    let mut back: HashSet<String> = HashSet::new();
+    // Targets of files that went back, in this run or an earlier one that may have stopped before restoring
+    // what the replace had sent to the Recycle Bin (the restore below is retried until the name is taken).
+    let aimed: HashMap<&str, &str> = entries
+        .iter()
+        .filter_map(|e| match e {
+            Entry::Temp { tmp, to, .. } => Some((tmp.as_str(), to.as_str())),
+            _ => None,
+        })
+        .collect();
+    let mut back: HashSet<String> = entries
+        .iter()
+        .filter_map(|e| match e {
+            Entry::Restored { tmp, .. } => aimed.get(tmp.as_str()).map(key),
+            _ => None,
+        })
+        .collect();
     for (from, tmp, to) in left {
         if move_free(Path::new(tmp), from) {
             let _ = j.add(&Entry::Restored { tmp: tmp.clone(), to: from.clone() });
@@ -483,16 +498,17 @@ pub fn undo(ctx: &Ctx, undo_journal: &Path) -> io::Result<UndoReport> {
                 rep.skipped.push(Skipped { path: to.clone(), reason: "changed since it was copied".into() });
                 continue;
             }
-            if !ctx.bin.can_trash(Path::new(to)) {
-                let reason = "its drive has no Recycle Bin, so it stays; delete it yourself if you don't need it";
-                rep.skipped.push(Skipped { path: to.clone(), reason: reason.into() });
-                continue;
-            }
-            match ctx.bin.trash(Path::new(to)) {
-                Ok(()) => {
-                    rep.restored += 1;
-                    binned.insert(key(to));
-                }
+            // On a drive without a Recycle Bin the copy is deleted: it is the unchanged file Vellova made
+            // (checked just above), so no work of the user's goes with it.
+            let p = Path::new(to);
+            let gone = if ctx.bin.can_trash(p) {
+                binned.insert(key(to));
+                ctx.bin.trash(p)
+            } else {
+                fs::remove_file(p)
+            };
+            match gone {
+                Ok(()) => rep.restored += 1,
                 Err(err) => rep.skipped.push(Skipped { path: to.clone(), reason: err.to_string() }),
             }
         }
@@ -942,14 +958,34 @@ mod tests {
     }
 
     #[test]
-    fn undo_leaves_copies_on_a_drive_without_a_recycle_bin() {
+    fn undo_on_a_drive_without_a_recycle_bin_deletes_only_unchanged_copies() {
         let t = T::new();
         let a = t.write("a.pdf", "A");
-        assert!(t.apply(&[cp(&a, &t.p("x.pdf"))])[0].ok);
+        let r = t.apply(&[cp(&a, &t.p("x.pdf")), cp(&a, &t.p("y.pdf"))]);
+        assert!(r.iter().all(|r| r.ok), "{r:?}");
+        fs::write(t.root.join("y.pdf"), "edited by the user").unwrap();
         t.bin.missing.set(true);
         let rep = t.undo();
-        assert_eq!((rep.restored, rep.skipped.len()), (0, 1));
-        assert_eq!(t.names(), ["a.pdf", "x.pdf"]);
+        assert_eq!((rep.restored, rep.skipped.len()), (1, 1));
+        assert_eq!(t.names(), ["a.pdf", "y.pdf"]);
+        assert!(t.bin.items.borrow().is_empty());
+    }
+
+    #[test]
+    fn recover_retries_bringing_back_a_replaced_file_after_a_crash() {
+        let t = T::new();
+        let (a, x) = (t.write("a.pdf", "A"), t.write("x.pdf", "OLD"));
+        t.bin.trash(Path::new(&x)).unwrap();
+        {
+            let mut j = Journal::open(&t.journal()).unwrap();
+            let tmp = t.p(".~vellova-b1-1-0.tmp");
+            j.add(&Entry::Temp { from: a.clone(), tmp: tmp.clone(), to: x.clone() }).unwrap();
+            j.add(&Entry::Trash { path: x }).unwrap();
+            j.add(&Entry::Restored { tmp, to: a }).unwrap(); // killed after a went back, before x came back
+        }
+        let rep = recover(&t.journal(), &t.bin).unwrap();
+        assert_eq!(rep.skipped, vec![]);
+        assert_eq!((t.read("a.pdf"), t.read("x.pdf")), ("A".into(), "OLD".into()));
     }
 
     #[cfg(windows)]
