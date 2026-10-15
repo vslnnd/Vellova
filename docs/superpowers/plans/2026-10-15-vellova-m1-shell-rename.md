@@ -93,7 +93,7 @@ src/
   lib/updater.ts                                 check → download → island "Update ready" → install + relaunch
   lib/shell/theme.ts                             resolve/apply theme, View Transition circle reveal, motion()
   lib/shell/island.ts                            pure island reducer: layers, chips, priority, timings
-  lib/shell/island.svelte.ts                     island state + send()
+  lib/shell/islandState.svelte.ts                     island state + send()
   lib/shell/Island.svelte, TitleBar.svelte, Panel.svelte
   lib/shell/shortcuts.ts                         key → action
   lib/shared/types.ts                            Plan, Op, Reason, profiles, history, settings types
@@ -3926,7 +3926,7 @@ EOF
 ### Task 10: The island
 
 **Files:**
-- Create: `src/lib/shell/island.ts`, `src/lib/shell/island.svelte.ts`, `src/lib/shell/Island.svelte`, `test/island.test.ts`
+- Create: `src/lib/shell/island.ts`, `src/lib/shell/islandState.svelte.ts`, `src/lib/shell/Island.svelte`, `test/island.test.ts`
 - Modify: `src/App.svelte` (temporary island check, replaced in Task 11)
 
 **Interfaces:**
@@ -3945,7 +3945,7 @@ EOF
     - `noticeText(s, n)`
     - `layerText(s)`
     - `TIMEOUT_MS: Partial<Record<Layer, number>>`
-  - `island.svelte.ts`: `island` (reactive `IslandState`), `send(e: IslandEvent)`. In dev, `window.__send` is exposed for CDP checks.
+  - `islandState.svelte.ts`: `island` (reactive `IslandState`), `send(e: IslandEvent)`. In dev, `window.__send` is exposed for CDP checks.
   - `Island.svelte`, with props `{ oncancel, onundo, onrestart }: () => void`.
 
 Events:
@@ -4138,7 +4138,7 @@ export function layerText(s: IslandState): string {
 Run: `npx vitest run test/island.test.ts`
 Expected: PASS (9 tests).
 
-- [ ] **Step 5: Write `src/lib/shell/island.svelte.ts`**
+- [ ] **Step 5: Write `src/lib/shell/islandState.svelte.ts`**
 
 ```ts
 import { INITIAL, reduce, type IslandEvent } from './island';
@@ -4163,7 +4163,7 @@ Layers sit on top of each other and crossfade (opacity, scale 0.92→1, blur 6�
   import { setTheme, ui, type PanelName } from '../app.svelte';
   import { data, save } from '../shared/state.svelte';
   import { chips, layer, layerText, noticeText, TIMEOUT_MS, type Layer, type Notice } from './island';
-  import { island, send } from './island.svelte';
+  import { island, send } from './islandState.svelte';
   import { switchTheme } from './theme';
 
   let { oncancel, onundo, onrestart }: { oncancel: () => void; onundo: () => void; onrestart: () => void } = $props();
@@ -4528,7 +4528,7 @@ Expected: PASS (3 tests).
 - [ ] **Step 5: Write `src/lib/shared/batches.ts`**
 
 ```ts
-import { island, send } from '../shell/island.svelte';
+import { island, send } from '../shell/islandState.svelte';
 import { ipc } from './ipc';
 import { data, log, save } from './state.svelte';
 import { lastUndoable, mergeBatch } from './store';
@@ -4913,7 +4913,7 @@ import { ipc, ipcReason, type OpResult } from '../shared/ipc';
 import { extOf, splitPath } from '../shared/names';
 import { data, log, save } from '../shared/state.svelte';
 import type { FileInfo, Reason, RenameProfile } from '../shared/types';
-import { island, send } from '../shell/island.svelte';
+import { island, send } from '../shell/islandState.svelte';
 import { readCompanion } from './companions';
 import type { CompanionData } from './engine/companion';
 import { mergeFiles, PDF, pathKey } from './engine/files';
@@ -5459,7 +5459,7 @@ if (import.meta.env.DEV) Object.assign(window, { __rename: { session, plan, addP
   import { undoLast } from '../shared/batches';
   import { data } from '../shared/state.svelte';
   import { lastUndoable } from '../shared/store';
-  import { island, send } from '../shell/island.svelte';
+  import { island, send } from '../shell/islandState.svelte';
   import DropZone from './DropZone.svelte';
   import { summary } from './engine/planner';
   import Preview from './Preview.svelte';
@@ -5988,7 +5988,7 @@ The panels are thin views over tested state, so they have no unit tests. Each st
   import { data } from '../shared/state.svelte';
   import { logToText } from '../shared/store';
   import type { Batch } from '../shared/types';
-  import { island } from '../shell/island.svelte';
+  import { island } from '../shell/islandState.svelte';
 
   let tab = $state<'batches' | 'log'>('batches');
   let tool = $state<'all' | 'rename' | 'split' | 'app'>('all');
@@ -6296,7 +6296,7 @@ Every group also has Skip all.
   import { applyFixes, pickPdf, plan, REASONS, retry, session, setName, skip } from '../rename/session.svelte';
   import { extOf, splitPath } from '../shared/names';
   import type { PlanItem, Reason } from '../shared/types';
-  import { island } from '../shell/island.svelte';
+  import { island } from '../shell/islandState.svelte';
 
   const TYPE: Reason[] = ['keyword-not-found', 'no-value', 'no-text'];
   const RETRY: Reason[] = ['locked', 'exists', 'internal'];
@@ -6540,7 +6540,7 @@ The public key is safe to commit. The private key never enters the repo.
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { data, flush, log } from './shared/state.svelte';
-import { send } from './shell/island.svelte';
+import { send } from './shell/islandState.svelte';
 
 let ready: Update | null = null;
 let timer: ReturnType<typeof setInterval> | undefined;
