@@ -16,7 +16,7 @@ export const ipc = {
   applyPlan: (batch: string, ops: Op[]) => invoke<OpResult[]>('apply_plan', { batch, ops }),
   undoBatch: (batch: string) => invoke<UndoReport>('undo_batch', { batch }),
   cancelApply: () => invoke<void>('cancel_apply'),
-  recoverAll: () => invoke<number>('recover_all'),
+  recoverAll: () => invoke<UndoReport>('recover_all'),
 };
 
 const FILE_REASONS: Reason[] = ['missing', 'permission', 'locked'];

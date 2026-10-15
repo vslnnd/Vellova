@@ -187,16 +187,22 @@ pub fn cancel_apply() {
     CANCEL.store(true, Ordering::SeqCst);
 }
 
-/// Puts back files left under temporary names by a run that was interrupted (crash, power cut).
+/// Repairs every run that was interrupted (crash, power cut): see `ops::recover`. Runs at each start, so a file
+/// that could not be repaired is reported again until it is.
 #[tauri::command]
-pub async fn recover_all(app: AppHandle) -> Result<usize, String> {
-    let Ok(rd) = fs::read_dir(data_dir(&app)?.join("journal")) else { return Ok(0) };
-    Ok(rd
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
-        .map(|p| ops::recover(&p).unwrap_or(0))
-        .sum())
+pub async fn recover_all(app: AppHandle) -> Result<UndoReport, String> {
+    let mut rep = UndoReport::default();
+    let Ok(rd) = fs::read_dir(data_dir(&app)?.join("journal")) else { return Ok(rep) };
+    for p in rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "jsonl")) {
+        match ops::recover(&p, &ops::RecycleBin) {
+            Ok(r) => {
+                rep.restored += r.restored;
+                rep.skipped.extend(r.skipped);
+            }
+            Err(e) => rep.skipped.push(ops::Skipped { path: p.to_string_lossy().into_owned(), reason: e.to_string() }),
+        }
+    }
+    Ok(rep)
 }
 
 #[cfg(test)]

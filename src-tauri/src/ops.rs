@@ -68,6 +68,8 @@ pub trait Bin {
     /// Puts back the newest item deleted from `path` (before `before`, when given: an undo skips past the
     /// copy it just sent to the bin, to the file that copy had replaced).
     fn restore(&self, path: &Path, before: Option<SystemTime>) -> io::Result<()>;
+    /// Whether a file at `path` would really go to a Recycle Bin, rather than be deleted for good.
+    fn can_trash(&self, path: &Path) -> bool;
 }
 
 /// The Windows Recycle Bin.
@@ -92,6 +94,27 @@ impl Bin for RecycleBin {
             None => Err(io::Error::new(io::ErrorKind::NotFound, "not found in the Recycle Bin")),
         }
     }
+    fn can_trash(&self, path: &Path) -> bool {
+        // ponytail: trusts local fixed drives only. A volume mounted in a folder, a bin switched off or a file
+        // too big for it are not detected; Windows then asks before it deletes for good.
+        drive_type(path) == DRIVE_FIXED
+    }
+}
+
+const DRIVE_FIXED: u32 = 3;
+
+/// `GetDriveTypeW` for the drive `path` is on; a relative path gives DRIVE_NO_ROOT_DIR.
+fn drive_type(path: &Path) -> u32 {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetDriveTypeW(root: *const u16) -> u32;
+    }
+    // `C:\` or `\\server\share\`: the prefix and the root, with the trailing backslash the call needs
+    let root: PathBuf = path.components().take(2).collect();
+    let wide: Vec<u16> = root.as_os_str().encode_wide().chain(Some(0)).collect();
+    // SAFETY: `wide` is a NUL-terminated UTF-16 string that outlives the call.
+    unsafe { GetDriveTypeW(wide.as_ptr()) }
 }
 
 pub struct Ctx<'a> {
@@ -177,13 +200,13 @@ impl Journal {
         ensure_parent(path)?;
         Ok(Self(OpenOptions::new().create(true).append(true).open(path)?))
     }
-    // ponytail: no fsync per line; survives an app crash, not a power cut. A failed write only costs undo
-    // for that file, so it never stops a batch half-way.
-    fn add(&mut self, e: &Entry) {
-        if let Ok(mut line) = serde_json::to_string(e) {
-            line.push('\n');
-            let _ = self.0.write_all(line.as_bytes());
-        }
+    /// Appends one entry. The newline goes first, so a line cut short (full disk) can't swallow the next one.
+    // ponytail: no fsync per line; survives an app crash, not a power cut.
+    fn add(&mut self, e: &Entry) -> io::Result<()> {
+        let line = format!("\n{}", serde_json::to_string(e).map_err(io::Error::other)?);
+        self.0
+            .write_all(line.as_bytes())
+            .map_err(|e| io::Error::other(format!("the undo journal could not be written ({e})")))
     }
 }
 
@@ -192,17 +215,22 @@ pub fn read_journal(path: &Path) -> io::Result<Vec<Entry>> {
 }
 
 /// Makes room at `to`. Free, or taken by a file this batch moves away: fine. With `replace`, an existing
-/// file goes to the Recycle Bin first. Otherwise: "exists". Never trashes a folder or the source itself.
-fn clear_target(j: &mut Journal, bin: &dyn Bin, op: &Op, to: &Path, leaving: &HashSet<String>) -> io::Result<()> {
+/// file goes to the Recycle Bin (journaled first) and the answer is `true`. Otherwise: "exists". Never
+/// trashes a folder, the source itself, or a file on a drive where it would be deleted for good.
+fn clear_target(j: &mut Journal, bin: &dyn Bin, op: &Op, to: &Path, leaving: &HashSet<String>) -> io::Result<bool> {
     if !exists(to) || leaving.contains(&key(to)) {
-        return Ok(());
+        return Ok(false);
     }
     if !op.replace || key(to) == key(&op.from) || fs::metadata(to)?.is_dir() {
         return Err(exists_err(to));
     }
+    if !bin.can_trash(to) {
+        let why = format!("{} already exists, and its drive has no Recycle Bin to put it in", to.display());
+        return Err(io::Error::new(io::ErrorKind::AlreadyExists, why));
+    }
+    j.add(&Entry::Trash { path: op.to.clone() })?;
     bin.trash(to)?;
-    j.add(&Entry::Trash { path: op.to.clone() });
-    Ok(())
+    Ok(true)
 }
 
 /// Renames `tmp` to `to` only while nothing is there: `fs::rename` would replace a file on Windows.
@@ -214,10 +242,39 @@ fn move_free(tmp: &Path, to: &str) -> bool {
 /// took that name meanwhile, keeps its temporary name and the message says where it is.
 fn step_back(j: &mut Journal, i: usize, e: &io::Error, tmp: &Path, from: &str) -> OpResult {
     if move_free(tmp, from) {
-        j.add(&Entry::Restored { tmp: s(tmp), to: from.to_string() });
+        let _ = j.add(&Entry::Restored { tmp: s(tmp), to: from.to_string() }); // if unwritten: recovery finds no temp file
         return fail(i, e);
     }
     OpResult { message: Some(format!("{e}; the file was left at {}", tmp.display())), ..fail(i, e) }
+}
+
+/// A failed op that had sent its target to the Recycle Bin brings it back; if it can't, the message says so.
+fn unbin(bin: &dyn Bin, mut r: OpResult, path: &str) -> OpResult {
+    if let Err(err) = bin.restore(Path::new(path), None) {
+        r.message = Some(format!("{}; {path} is in the Recycle Bin ({err})", r.message.unwrap_or_default()));
+    }
+    r
+}
+
+/// The result of an op that happened. Without its journal line Undo can't reverse it, so it counts as failed.
+fn done(i: usize, journaled: io::Result<()>) -> OpResult {
+    match journaled {
+        Ok(()) => ok(i),
+        Err(e) => OpResult { i, ok: false, code: Some("internal"), message: Some(format!("done, but it can't be undone: {e}")) },
+    }
+}
+
+/// Copies `op.from` to `tmp` next to the target, makes room at the target, then moves the finished copy in.
+/// `trashed` tells whether the target went to the Recycle Bin on the way.
+fn copy_in(j: &mut Journal, bin: &dyn Bin, op: &Op, tmp: &Path, trashed: &mut bool) -> io::Result<()> {
+    let to = Path::new(&op.to);
+    ensure_parent(to)?;
+    fs::copy(&op.from, tmp)?;
+    *trashed = clear_target(j, bin, op, to, &HashSet::new())?;
+    if exists(to) {
+        return Err(exists_err(to));
+    }
+    fs::rename(tmp, to)
 }
 
 /// Runs the operations. Each one gets its own result; a failure never stops the others.
@@ -234,22 +291,22 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
     let tag: String = batch.chars().take(8).collect();
     let leaving: HashSet<String> = ops.iter().filter(|o| o.kind == Kind::Rename).map(|o| key(&o.from)).collect();
 
-    // Phase 1: every rename source steps aside to a temporary name next to it. Its target is cleared only
-    // then, so a source that can't move (locked) never costs the file it would replace.
-    let mut staged: Vec<(usize, PathBuf)> = Vec::new();
+    // Phase 1: every rename source steps aside to a temporary name next to it, journaled first (no line, no
+    // move). Its target is cleared only then, so a source that can't move never costs the file it would replace.
+    let mut staged: Vec<(usize, PathBuf, bool)> = Vec::new();
     for (i, op) in ops.iter().enumerate().filter(|(_, o)| o.kind == Kind::Rename) {
         if stop() {
             report(&mut out, cancelled(i));
             continue;
         }
         let tmp = Path::new(&op.from).with_file_name(format!(".~vellova-{tag}-{stamp}-{i}.tmp"));
-        if let Err(e) = fs::rename(&op.from, &tmp) {
+        let aside = j.add(&Entry::Temp { from: op.from.clone(), tmp: s(&tmp), to: op.to.clone() });
+        if let Err(e) = aside.and_then(|_| fs::rename(&op.from, &tmp)) {
             report(&mut out, fail(i, &e));
             continue;
         }
-        j.add(&Entry::Temp { from: op.from.clone(), tmp: s(&tmp), to: op.to.clone() });
         match clear_target(&mut j, ctx.bin, op, Path::new(&op.to), &leaving) {
-            Ok(()) => staged.push((i, tmp)),
+            Ok(trashed) => staged.push((i, tmp, trashed)),
             Err(e) => report(&mut out, step_back(&mut j, i, &e, &tmp, &op.from)),
         }
     }
@@ -259,7 +316,7 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
     let mut taken: HashSet<String> = HashSet::new();
     loop {
         let before = taken.len();
-        for (i, _) in &staged {
+        for (i, _, _) in &staged {
             let op = &ops[*i];
             if exists(Path::new(&op.to)) || taken.contains(&key(&op.to)) {
                 taken.insert(key(&op.from));
@@ -270,8 +327,9 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
         }
     }
 
-    // Phase 2: temporary names become final names (always finished, even after Cancel).
-    for (i, tmp) in staged {
+    // Phase 2: temporary names become final names (always finished, even after Cancel). An op that fails
+    // here goes back, and brings back the file it had sent to the Recycle Bin.
+    for (i, tmp, trashed) in staged {
         let op = &ops[i];
         let to = Path::new(&op.to);
         let moved = if exists(to) || taken.contains(&key(to)) {
@@ -282,31 +340,38 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
         match moved {
             Ok(()) => {
                 let (size, mtime) = stat(to).unwrap_or((0, 0));
-                j.add(&Entry::Final { from: op.from.clone(), tmp: s(&tmp), to: op.to.clone(), size, mtime });
-                report(&mut out, ok(i));
+                let line = j.add(&Entry::Final { from: op.from.clone(), tmp: s(&tmp), to: op.to.clone(), size, mtime });
+                report(&mut out, done(i, line));
             }
-            Err(e) => report(&mut out, step_back(&mut j, i, &e, &tmp, &op.from)),
+            Err(e) => {
+                let r = step_back(&mut j, i, &e, &tmp, &op.from);
+                report(&mut out, if trashed { unbin(ctx.bin, r, &op.to) } else { r });
+            }
         }
     }
 
-    // Copies, in order.
-    let none = HashSet::new();
+    // Copies, in order. Each is written under a temporary name next to its target first, so the file it
+    // replaces goes to the Recycle Bin only once the copy is complete.
+    // ponytail: a crash inside one copy can leave its temporary copy behind (not journaled, hidden from the
+    // app) and, for a microsecond window, its replaced file in the bin with no copy in its place.
     for (i, op) in ops.iter().enumerate().filter(|(_, o)| o.kind == Kind::Copy) {
         if stop() {
             report(&mut out, cancelled(i));
             continue;
         }
-        let to = Path::new(&op.to);
-        let copied = clear_target(&mut j, ctx.bin, op, to, &none)
-            .and_then(|_| ensure_parent(to))
-            .and_then(|_| fs::copy(&op.from, to).map(|_| ()));
-        match copied {
+        let tmp = Path::new(&op.to).with_file_name(format!(".~vellova-{tag}-{stamp}-{i}.tmp"));
+        let mut trashed = false;
+        match copy_in(&mut j, ctx.bin, op, &tmp, &mut trashed) {
             Ok(()) => {
-                let (size, mtime) = stat(to).unwrap_or((0, 0));
-                j.add(&Entry::Copy { from: op.from.clone(), to: op.to.clone(), size, mtime });
-                report(&mut out, ok(i));
+                let (size, mtime) = stat(Path::new(&op.to)).unwrap_or((0, 0));
+                let line = j.add(&Entry::Copy { from: op.from.clone(), to: op.to.clone(), size, mtime });
+                report(&mut out, done(i, line));
             }
-            Err(e) => report(&mut out, fail(i, &e)),
+            Err(e) => {
+                let _ = fs::remove_file(&tmp); // the unfinished copy is ours
+                let r = fail(i, &e);
+                report(&mut out, if trashed { unbin(ctx.bin, r, &op.to) } else { r });
+            }
         }
     }
 
@@ -314,12 +379,19 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
     Ok(out)
 }
 
-/// Puts back files left under a temporary name by an interrupted run, under their old name or, when another
-/// file of the batch already took it (a swap stopped half-way), their new one. Returns how many.
-pub fn recover(journal: &Path) -> io::Result<usize> {
+/// Journals a file that reached its new name, with what Undo checks later.
+fn arrived(j: &mut Journal, from: &str, tmp: &str, to: &str) -> io::Result<()> {
+    let (size, mtime) = stat(Path::new(to)).unwrap_or((0, 0));
+    j.add(&Entry::Final { from: from.into(), tmp: tmp.into(), to: to.into(), size, mtime })
+}
+
+/// Repairs a run that was interrupted (crash, power cut). Files left under a temporary name get a real name
+/// again, and a file sent to the Recycle Bin for a replace that never happened comes back. What can't be
+/// repaired is reported with the path where the file is.
+pub fn recover(journal: &Path, bin: &dyn Bin) -> io::Result<UndoReport> {
     let entries = match read_journal(journal) {
         Ok(e) => e,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(0),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(UndoReport::default()),
         Err(e) => return Err(e),
     };
     let settled: HashSet<&str> = entries
@@ -329,35 +401,76 @@ pub fn recover(journal: &Path) -> io::Result<usize> {
             _ => None,
         })
         .collect();
+    let mut left: Vec<(&String, &String, &String)> = entries
+        .iter()
+        .filter_map(|e| match e {
+            Entry::Temp { from, tmp, to } if !settled.contains(tmp.as_str()) && exists(Path::new(tmp)) => Some((from, tmp, to)),
+            _ => None,
+        })
+        .collect();
     let mut j = Journal::open(journal)?;
-    let mut n = 0;
-    for e in &entries {
-        if let Entry::Temp { from, tmp, to } = e {
-            let tmp_p = Path::new(tmp);
-            if settled.contains(tmp.as_str()) || !exists(tmp_p) {
-                continue;
+    let mut rep = UndoReport::default();
+    let unjournaled = |rep: &mut UndoReport, to: &str, e: io::Error| {
+        rep.skipped.push(Skipped { path: to.into(), reason: format!("got its new name, but Undo can't reverse it: {e}") });
+    };
+
+    // A file whose old name another file of the batch already took was on its way (phase 2): it goes on to
+    // its new name. That can free the way for another, so repeat. Then every other file goes back.
+    loop {
+        let before = left.len();
+        left.retain(|&(from, tmp, to)| {
+            let on = exists(Path::new(from)) && move_free(Path::new(tmp), to);
+            if on {
+                rep.restored += 1;
+                if let Err(e) = arrived(&mut j, from, tmp, to) {
+                    unjournaled(&mut rep, to, e);
+                }
             }
-            if move_free(tmp_p, from) {
-                j.add(&Entry::Restored { tmp: tmp.clone(), to: from.clone() });
-                n += 1;
-            } else if move_free(tmp_p, to) {
-                let (size, mtime) = stat(Path::new(to)).unwrap_or((0, 0));
-                j.add(&Entry::Final { from: from.clone(), tmp: tmp.clone(), to: to.clone(), size, mtime });
-                n += 1;
+            !on
+        });
+        if left.len() == before {
+            break;
+        }
+    }
+    let mut back: HashSet<String> = HashSet::new();
+    for (from, tmp, to) in left {
+        if move_free(Path::new(tmp), from) {
+            let _ = j.add(&Entry::Restored { tmp: tmp.clone(), to: from.clone() });
+            back.insert(key(to));
+        } else if move_free(Path::new(tmp), to) {
+            if let Err(e) = arrived(&mut j, from, tmp, to) {
+                unjournaled(&mut rep, to, e);
+            }
+        } else {
+            let reason = format!("left under a temporary name: {from} and {to} are both taken");
+            rep.skipped.push(Skipped { path: tmp.clone(), reason });
+            continue;
+        }
+        rep.restored += 1;
+    }
+
+    // The replace of a file that went back never happened: what it had sent to the Recycle Bin comes back.
+    for e in &entries {
+        if let Entry::Trash { path } = e {
+            if back.contains(&key(path)) && !exists(Path::new(path)) {
+                if let Err(err) = bin.restore(Path::new(path), None) {
+                    rep.skipped.push(Skipped { path: path.clone(), reason: format!("restore it from the Recycle Bin ({err})") });
+                }
             }
         }
     }
-    Ok(n)
+    Ok(rep)
 }
 
 /// Undoes a batch: copies go to the Recycle Bin, renames are reversed, replaced files come back.
 /// Files that changed since the batch are left alone and reported. Safe to run again.
 pub fn undo(ctx: &Ctx, undo_journal: &Path) -> io::Result<UndoReport> {
     let started = SystemTime::now();
-    recover(ctx.journal)?;
-    recover(undo_journal)?;
-    let entries = read_journal(ctx.journal)?;
     let mut rep = UndoReport::default();
+    for journal in [ctx.journal, undo_journal] {
+        rep.skipped.extend(recover(journal, ctx.bin)?.skipped);
+    }
+    let entries = read_journal(ctx.journal)?;
     let same = |p: &str, size: u64, mtime: u64| stat(Path::new(p)).is_ok_and(|st| st == (size, mtime));
     let mut binned: HashSet<String> = HashSet::new();
 
@@ -368,6 +481,11 @@ pub fn undo(ctx: &Ctx, undo_journal: &Path) -> io::Result<UndoReport> {
             }
             if !same(to, *size, *mtime) {
                 rep.skipped.push(Skipped { path: to.clone(), reason: "changed since it was copied".into() });
+                continue;
+            }
+            if !ctx.bin.can_trash(Path::new(to)) {
+                let reason = "its drive has no Recycle Bin, so it stays; delete it yourself if you don't need it";
+                rep.skipped.push(Skipped { path: to.clone(), reason: reason.into() });
                 continue;
             }
             match ctx.bin.trash(Path::new(to)) {
@@ -416,14 +534,18 @@ pub fn undo(ctx: &Ctx, undo_journal: &Path) -> io::Result<UndoReport> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
 
-    /// Test double for the Recycle Bin: moves files into `_bin` and back.
+    /// Test double for the Recycle Bin: moves files into `_bin` and back. `missing` plays a drive without one.
     struct FakeBin {
         dir: PathBuf,
         items: RefCell<Vec<(PathBuf, PathBuf, SystemTime)>>,
+        missing: Cell<bool>,
     }
     impl Bin for FakeBin {
+        fn can_trash(&self, _: &Path) -> bool {
+            !self.missing.get()
+        }
         fn trash(&self, p: &Path) -> io::Result<()> {
             let mut items = self.items.borrow_mut();
             let dest = self.dir.join(items.len().to_string());
@@ -442,6 +564,21 @@ mod tests {
         }
     }
 
+    /// A Recycle Bin that runs `hook` before each file goes in, to stage what other programs might do then.
+    struct HookBin<'a, F: Fn(&Path)>(&'a FakeBin, F);
+    impl<F: Fn(&Path)> Bin for HookBin<'_, F> {
+        fn trash(&self, p: &Path) -> io::Result<()> {
+            (self.1)(p);
+            self.0.trash(p)
+        }
+        fn restore(&self, p: &Path, before: Option<SystemTime>) -> io::Result<()> {
+            self.0.restore(p, before)
+        }
+        fn can_trash(&self, p: &Path) -> bool {
+            self.0.can_trash(p)
+        }
+    }
+
     struct T {
         _dir: tempfile::TempDir,
         root: PathBuf,
@@ -453,7 +590,7 @@ mod tests {
             let root = d.path().to_path_buf();
             let dir = root.join("_bin");
             fs::create_dir_all(&dir).unwrap();
-            Self { bin: FakeBin { dir, items: RefCell::new(vec![]) }, root, _dir: d }
+            Self { bin: FakeBin { dir, items: RefCell::new(vec![]), missing: Cell::new(false) }, root, _dir: d }
         }
         fn p(&self, name: &str) -> String {
             s(&self.root.join(name))
@@ -480,8 +617,11 @@ mod tests {
             self.root.join("_journal").join("b1.jsonl")
         }
         fn apply(&self, ops: &[Op]) -> Vec<OpResult> {
+            self.apply_with(&self.bin, ops)
+        }
+        fn apply_with(&self, bin: &dyn Bin, ops: &[Op]) -> Vec<OpResult> {
             let (j, cancel, noop) = (self.journal(), AtomicBool::new(false), |_: usize, _: usize| {});
-            apply(&Ctx { journal: &j, bin: &self.bin, progress: &noop, cancel: &cancel }, "b1", ops).unwrap()
+            apply(&Ctx { journal: &j, bin, progress: &noop, cancel: &cancel }, "b1", ops).unwrap()
         }
         fn undo(&self) -> UndoReport {
             let (j, uj, cancel, noop) = (self.journal(), self.root.join("_journal").join("b1.undo.jsonl"), AtomicBool::new(false), |_: usize, _: usize| {});
@@ -594,10 +734,10 @@ mod tests {
         let a = t.write("a.pdf", "A");
         let tmp = t.p(".~vellova-b1-1-0.tmp");
         fs::rename(&a, &tmp).unwrap();
-        Journal::open(&t.journal()).unwrap().add(&Entry::Temp { from: a.clone(), tmp, to: t.p("x.pdf") });
-        assert_eq!(recover(&t.journal()).unwrap(), 1);
+        Journal::open(&t.journal()).unwrap().add(&Entry::Temp { from: a.clone(), tmp, to: t.p("x.pdf") }).unwrap();
+        assert_eq!(recover(&t.journal(), &t.bin).unwrap().restored, 1);
         assert_eq!(t.names(), ["a.pdf"]);
-        assert_eq!(recover(&t.journal()).unwrap(), 0);
+        assert_eq!(recover(&t.journal(), &t.bin).unwrap().restored, 0);
     }
 
     #[test]
@@ -610,11 +750,11 @@ mod tests {
         fs::rename(&ta, &b).unwrap(); // killed after the first file reached its new name
         {
             let mut j = Journal::open(&t.journal()).unwrap();
-            j.add(&Entry::Temp { from: a.clone(), tmp: ta.clone(), to: b.clone() });
-            j.add(&Entry::Temp { from: b.clone(), tmp: tb, to: a.clone() });
-            j.add(&Entry::Final { from: a, tmp: ta, to: b, size: 1, mtime: 0 });
+            j.add(&Entry::Temp { from: a.clone(), tmp: ta.clone(), to: b.clone() }).unwrap();
+            j.add(&Entry::Temp { from: b.clone(), tmp: tb, to: a.clone() }).unwrap();
+            j.add(&Entry::Final { from: a, tmp: ta, to: b, size: 1, mtime: 0 }).unwrap();
         }
-        assert_eq!(recover(&t.journal()).unwrap(), 1);
+        assert_eq!(recover(&t.journal(), &t.bin).unwrap().restored, 1);
         assert_eq!(t.names(), ["a.pdf", "b.pdf"]);
         assert_eq!((t.read("a.pdf"), t.read("b.pdf")), ("B".into(), "A".into()));
     }
@@ -678,5 +818,146 @@ mod tests {
         assert_eq!(code(&io::Error::from_raw_os_error(32)), "locked");
         assert_eq!(code(&io::Error::from_raw_os_error(183)), "exists");
         assert_eq!(code(&io::Error::other("x")), "internal");
+    }
+
+    #[test]
+    fn copy_replace_with_a_missing_source_keeps_the_target() {
+        let t = T::new();
+        let x = t.write("x.pdf", "OLD");
+        let mut op = cp(&t.p("gone.pdf"), &x);
+        op.replace = true;
+        assert_eq!(t.apply(&[op])[0].code, Some("missing"));
+        assert_eq!(t.names(), ["x.pdf"]);
+        assert_eq!(t.read("x.pdf"), "OLD");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_move_that_fails_after_replacing_brings_the_replaced_file_back() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let t = T::new();
+        let (a, x) = (t.write("a.pdf", "A"), t.write("x.pdf", "OLD"));
+        // While the source waits under its temporary name, another program opens it (a virus scanner, say).
+        let held = RefCell::new(None);
+        let bin = HookBin(&t.bin, |_: &Path| {
+            let tmp = fs::read_dir(&t.root).unwrap().flatten().map(|e| e.path()).find(|p| s(p).contains(".~vellova-"));
+            *held.borrow_mut() = Some(OpenOptions::new().read(true).share_mode(0).open(tmp.unwrap()).unwrap());
+        });
+        let mut op = rn(&a, &x);
+        op.replace = true;
+        let r = t.apply_with(&bin, &[op]);
+        assert_eq!(r[0].code, Some("locked"));
+        assert_eq!(t.read("x.pdf"), "OLD");
+        drop(held.take());
+        assert_eq!(recover(&t.journal(), &t.bin).unwrap().restored, 1);
+        assert_eq!(t.names(), ["a.pdf", "x.pdf"]);
+    }
+
+    #[test]
+    fn recover_brings_back_the_file_a_stopped_replace_had_binned() {
+        let t = T::new();
+        let (a, x) = (t.write("a.pdf", "A"), t.write("x.pdf", "OLD"));
+        let tmp = t.p(".~vellova-b1-1-0.tmp");
+        {
+            let mut j = Journal::open(&t.journal()).unwrap();
+            j.add(&Entry::Temp { from: a.clone(), tmp: tmp.clone(), to: x.clone() }).unwrap();
+            j.add(&Entry::Trash { path: x.clone() }).unwrap();
+        }
+        fs::rename(&a, &tmp).unwrap();
+        t.bin.trash(Path::new(&x)).unwrap(); // killed here, before phase 2
+        let rep = recover(&t.journal(), &t.bin).unwrap();
+        assert_eq!((rep.restored, rep.skipped), (1, vec![]));
+        assert_eq!((t.read("a.pdf"), t.read("x.pdf")), ("A".into(), "OLD".into()));
+    }
+
+    #[test]
+    fn recover_finishes_a_chain_whatever_order_the_journal_lists_it() {
+        // ops [z→x, y→w, x→y], killed right after z reached x
+        let t = T::new();
+        let (z, x, y, w) = (t.write("z.pdf", "Z"), t.write("x.pdf", "X"), t.write("y.pdf", "Y"), t.p("w.pdf"));
+        let tmps: Vec<String> = (0..3).map(|i| t.p(&format!(".~vellova-b1-1-{i}.tmp"))).collect();
+        {
+            let mut j = Journal::open(&t.journal()).unwrap();
+            for ((from, to), tmp) in [(&z, &x), (&y, &w), (&x, &y)].into_iter().zip(&tmps) {
+                j.add(&Entry::Temp { from: from.clone(), tmp: tmp.clone(), to: to.clone() }).unwrap();
+                fs::rename(from, tmp).unwrap();
+            }
+            fs::rename(&tmps[0], &x).unwrap();
+            j.add(&Entry::Final { from: z, tmp: tmps[0].clone(), to: x, size: 1, mtime: 0 }).unwrap();
+        }
+        let rep = recover(&t.journal(), &t.bin).unwrap();
+        assert_eq!((rep.restored, rep.skipped), (2, vec![]));
+        assert_eq!(t.names(), ["w.pdf", "x.pdf", "y.pdf"]);
+        assert_eq!((t.read("w.pdf"), t.read("x.pdf"), t.read("y.pdf")), ("Y".into(), "Z".into(), "X".into()));
+    }
+
+    #[test]
+    fn nothing_moves_while_the_journal_cannot_be_written() {
+        let t = T::new();
+        let a = t.write("a.pdf", "A");
+        Journal::open(&t.journal()).unwrap();
+        let lock = fs::File::open(t.journal()).unwrap();
+        lock.lock().unwrap();
+        let r = t.apply(&[rn(&a, &t.p("x.pdf"))]);
+        drop(lock);
+        assert_eq!((r[0].ok, r[0].code), (false, Some("internal")));
+        assert_eq!(t.names(), ["a.pdf"]);
+    }
+
+    #[test]
+    fn a_rename_the_journal_missed_is_reported_as_not_undoable() {
+        let t = T::new();
+        let (a, x) = (t.write("a.pdf", "A"), t.write("x.pdf", "OLD"));
+        // The journal stops taking lines (full disk) after phase 1: the rename happens, its line does not.
+        let held = RefCell::new(None);
+        let bin = HookBin(&t.bin, |_: &Path| {
+            let f = fs::File::open(t.journal()).unwrap();
+            f.lock().unwrap();
+            *held.borrow_mut() = Some(f);
+        });
+        let mut op = rn(&a, &x);
+        op.replace = true;
+        let r = t.apply_with(&bin, &[op]);
+        drop(held.take());
+        assert_eq!((r[0].ok, r[0].code), (false, Some("internal")));
+        assert!(r[0].message.as_deref().unwrap_or("").contains("can't be undone"), "{r:?}");
+        assert_eq!(t.read("x.pdf"), "A");
+    }
+
+    #[test]
+    fn replace_on_a_drive_without_a_recycle_bin_leaves_both_files() {
+        let t = T::new();
+        t.bin.missing.set(true);
+        let (a, b, x, y) = (t.write("a.pdf", "A"), t.write("b.pdf", "B"), t.write("x.pdf", "X"), t.write("y.pdf", "Y"));
+        let mut ro = fs::metadata(&b).unwrap().permissions();
+        ro.set_readonly(true); // its temporary copy comes out read-only too, and must still be cleaned up
+        fs::set_permissions(&b, ro).unwrap();
+        let (mut op1, mut op2) = (rn(&a, &x), cp(&b, &y));
+        op1.replace = true;
+        op2.replace = true;
+        let r = t.apply(&[op1, op2]);
+        assert_eq!((r[0].code, r[1].code), (Some("exists"), Some("exists")));
+        assert_eq!(t.names(), ["a.pdf", "b.pdf", "x.pdf", "y.pdf"]);
+        assert_eq!((t.read("x.pdf"), t.read("y.pdf")), ("X".into(), "Y".into()));
+    }
+
+    #[test]
+    fn undo_leaves_copies_on_a_drive_without_a_recycle_bin() {
+        let t = T::new();
+        let a = t.write("a.pdf", "A");
+        assert!(t.apply(&[cp(&a, &t.p("x.pdf"))])[0].ok);
+        t.bin.missing.set(true);
+        let rep = t.undo();
+        assert_eq!((rep.restored, rep.skipped.len()), (0, 1));
+        assert_eq!(t.names(), ["a.pdf", "x.pdf"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_recycle_bin_is_trusted_on_local_fixed_drives_only() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(RecycleBin.can_trash(&d.path().join("x.pdf")));
+        assert!(RecycleBin.can_trash(Path::new(&format!(r"\\?\{}", d.path().join("x.pdf").display()))));
+        assert!(!RecycleBin.can_trash(Path::new("x.pdf")));
     }
 }
