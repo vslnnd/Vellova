@@ -18,6 +18,6 @@ loadAll()
     mount(App, { target: document.getElementById('app')! });
     void getCurrentWindow().show();
     void ipc.recoverAll().then((n) => {
-      if (n) log({ level: 'warn', tool: 'app', message: `${n} file(s) from an interrupted batch were put back under their original names.` });
+      if (n) log({ level: 'warn', tool: 'app', message: `${n} file(s) left under a temporary name by an interrupted batch got their name back.` });
     });
   });

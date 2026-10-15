@@ -39,8 +39,8 @@ pub struct OpResult {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "t", rename_all = "lowercase")]
 pub enum Entry {
-    /// `from` stepped aside to `tmp` (phase 1).
-    Temp { from: String, tmp: String },
+    /// `from` stepped aside to `tmp` on its way to `to` (phase 1).
+    Temp { from: String, tmp: String, to: String },
     /// `tmp` reached its final name `to` (phase 2); `from` is the original path.
     Final { from: String, tmp: String, to: String, size: u64, mtime: u64 },
     /// A copy of `from` was written to `to`.
@@ -65,7 +65,9 @@ pub struct UndoReport {
 
 pub trait Bin {
     fn trash(&self, path: &Path) -> io::Result<()>;
-    fn restore(&self, path: &Path) -> io::Result<()>;
+    /// Puts back the newest item deleted from `path` (before `before`, when given: an undo skips past the
+    /// copy it just sent to the bin, to the file that copy had replaced).
+    fn restore(&self, path: &Path, before: Option<SystemTime>) -> io::Result<()>;
 }
 
 /// The Windows Recycle Bin.
@@ -75,12 +77,15 @@ impl Bin for RecycleBin {
     fn trash(&self, path: &Path) -> io::Result<()> {
         trash::delete(path).map_err(|e| io::Error::other(e.to_string()))
     }
-    fn restore(&self, path: &Path) -> io::Result<()> {
+    fn restore(&self, path: &Path, before: Option<SystemTime>) -> io::Result<()> {
         let want = key(path);
+        // ponytail: the trash crate gives whole seconds, so a copy-replace undone in the same second it ran
+        // leaves the replaced file in the bin (reported); finer needs the shell's own deletion date.
+        let before = before.map_or(i64::MAX, |t| t.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64));
         let newest = trash::os_limited::list()
             .map_err(|e| io::Error::other(e.to_string()))?
             .into_iter()
-            .filter(|it| key(it.original_path()) == want)
+            .filter(|it| it.time_deleted < before && key(it.original_path()) == want)
             .max_by_key(|it| it.time_deleted);
         match newest {
             Some(item) => trash::os_limited::restore_all([item]).map_err(|e| io::Error::other(e.to_string())),
@@ -200,6 +205,21 @@ fn clear_target(j: &mut Journal, bin: &dyn Bin, op: &Op, to: &Path, leaving: &Ha
     Ok(())
 }
 
+/// Renames `tmp` to `to` only while nothing is there: `fs::rename` would replace a file on Windows.
+fn move_free(tmp: &Path, to: &str) -> bool {
+    !exists(Path::new(to)) && fs::rename(tmp, to).is_ok()
+}
+
+/// The failure of an op whose file stepped aside: the file goes back to its old name, or, if something
+/// took that name meanwhile, keeps its temporary name and the message says where it is.
+fn step_back(j: &mut Journal, i: usize, e: &io::Error, tmp: &Path, from: &str) -> OpResult {
+    if move_free(tmp, from) {
+        j.add(&Entry::Restored { tmp: s(tmp), to: from.to_string() });
+        return fail(i, e);
+    }
+    OpResult { message: Some(format!("{e}; the file was left at {}", tmp.display())), ..fail(i, e) }
+}
+
 /// Runs the operations. Each one gets its own result; a failure never stops the others.
 pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
     let mut j = Journal::open(ctx.journal)?;
@@ -214,25 +234,39 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
     let tag: String = batch.chars().take(8).collect();
     let leaving: HashSet<String> = ops.iter().filter(|o| o.kind == Kind::Rename).map(|o| key(&o.from)).collect();
 
-    // Phase 1: every rename source steps aside to a temporary name next to it.
+    // Phase 1: every rename source steps aside to a temporary name next to it. Its target is cleared only
+    // then, so a source that can't move (locked) never costs the file it would replace.
     let mut staged: Vec<(usize, PathBuf)> = Vec::new();
     for (i, op) in ops.iter().enumerate().filter(|(_, o)| o.kind == Kind::Rename) {
         if stop() {
             report(&mut out, cancelled(i));
             continue;
         }
-        let from = Path::new(&op.from);
-        if let Err(e) = clear_target(&mut j, ctx.bin, op, Path::new(&op.to), &leaving) {
+        let tmp = Path::new(&op.from).with_file_name(format!(".~vellova-{tag}-{stamp}-{i}.tmp"));
+        if let Err(e) = fs::rename(&op.from, &tmp) {
             report(&mut out, fail(i, &e));
             continue;
         }
-        let tmp = from.with_file_name(format!(".~vellova-{tag}-{stamp}-{i}.tmp"));
-        match fs::rename(from, &tmp) {
-            Ok(()) => {
-                j.add(&Entry::Temp { from: op.from.clone(), tmp: s(&tmp) });
-                staged.push((i, tmp));
+        j.add(&Entry::Temp { from: op.from.clone(), tmp: s(&tmp), to: op.to.clone() });
+        match clear_target(&mut j, ctx.bin, op, Path::new(&op.to), &leaving) {
+            Ok(()) => staged.push((i, tmp)),
+            Err(e) => report(&mut out, step_back(&mut j, i, &e, &tmp, &op.from)),
+        }
+    }
+
+    // A target still taken now (its file could not step aside) sends its op back to the old name, which
+    // keeps that name taken in turn, down the whole chain. So no op ever lands on a name another op needs.
+    let mut taken: HashSet<String> = HashSet::new();
+    loop {
+        let before = taken.len();
+        for (i, _) in &staged {
+            let op = &ops[*i];
+            if exists(Path::new(&op.to)) || taken.contains(&key(&op.to)) {
+                taken.insert(key(&op.from));
             }
-            Err(e) => report(&mut out, fail(i, &e)),
+        }
+        if taken.len() == before {
+            break;
         }
     }
 
@@ -240,19 +274,18 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
     for (i, tmp) in staged {
         let op = &ops[i];
         let to = Path::new(&op.to);
-        let moved = if exists(to) { Err(exists_err(to)) } else { ensure_parent(to).and_then(|_| move_file(&tmp, to)) };
+        let moved = if exists(to) || taken.contains(&key(to)) {
+            Err(exists_err(to))
+        } else {
+            ensure_parent(to).and_then(|_| move_file(&tmp, to))
+        };
         match moved {
             Ok(()) => {
                 let (size, mtime) = stat(to).unwrap_or((0, 0));
                 j.add(&Entry::Final { from: op.from.clone(), tmp: s(&tmp), to: op.to.clone(), size, mtime });
                 report(&mut out, ok(i));
             }
-            Err(e) => {
-                if fs::rename(&tmp, &op.from).is_ok() {
-                    j.add(&Entry::Restored { tmp: s(&tmp), to: op.from.clone() });
-                }
-                report(&mut out, fail(i, &e));
-            }
+            Err(e) => report(&mut out, step_back(&mut j, i, &e, &tmp, &op.from)),
         }
     }
 
@@ -281,7 +314,8 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
     Ok(out)
 }
 
-/// Puts back files left under a temporary name by an interrupted run. Returns how many.
+/// Puts back files left under a temporary name by an interrupted run, under their old name or, when another
+/// file of the batch already took it (a swap stopped half-way), their new one. Returns how many.
 pub fn recover(journal: &Path) -> io::Result<usize> {
     let entries = match read_journal(journal) {
         Ok(e) => e,
@@ -298,13 +332,17 @@ pub fn recover(journal: &Path) -> io::Result<usize> {
     let mut j = Journal::open(journal)?;
     let mut n = 0;
     for e in &entries {
-        if let Entry::Temp { from, tmp } = e {
-            let (tmp_p, from_p) = (Path::new(tmp), Path::new(from));
-            if settled.contains(tmp.as_str()) || !exists(tmp_p) || exists(from_p) {
+        if let Entry::Temp { from, tmp, to } = e {
+            let tmp_p = Path::new(tmp);
+            if settled.contains(tmp.as_str()) || !exists(tmp_p) {
                 continue;
             }
-            if fs::rename(tmp_p, from_p).is_ok() {
+            if move_free(tmp_p, from) {
                 j.add(&Entry::Restored { tmp: tmp.clone(), to: from.clone() });
+                n += 1;
+            } else if move_free(tmp_p, to) {
+                let (size, mtime) = stat(Path::new(to)).unwrap_or((0, 0));
+                j.add(&Entry::Final { from: from.clone(), tmp: tmp.clone(), to: to.clone(), size, mtime });
                 n += 1;
             }
         }
@@ -315,11 +353,13 @@ pub fn recover(journal: &Path) -> io::Result<usize> {
 /// Undoes a batch: copies go to the Recycle Bin, renames are reversed, replaced files come back.
 /// Files that changed since the batch are left alone and reported. Safe to run again.
 pub fn undo(ctx: &Ctx, undo_journal: &Path) -> io::Result<UndoReport> {
+    let started = SystemTime::now();
     recover(ctx.journal)?;
     recover(undo_journal)?;
     let entries = read_journal(ctx.journal)?;
     let mut rep = UndoReport::default();
     let same = |p: &str, size: u64, mtime: u64| stat(Path::new(p)).is_ok_and(|st| st == (size, mtime));
+    let mut binned: HashSet<String> = HashSet::new();
 
     for e in entries.iter().rev() {
         if let Entry::Copy { to, size, mtime, .. } = e {
@@ -331,7 +371,10 @@ pub fn undo(ctx: &Ctx, undo_journal: &Path) -> io::Result<UndoReport> {
                 continue;
             }
             match ctx.bin.trash(Path::new(to)) {
-                Ok(()) => rep.restored += 1,
+                Ok(()) => {
+                    rep.restored += 1;
+                    binned.insert(key(to));
+                }
                 Err(err) => rep.skipped.push(Skipped { path: to.clone(), reason: err.to_string() }),
             }
         }
@@ -361,7 +404,8 @@ pub fn undo(ctx: &Ctx, undo_journal: &Path) -> io::Result<UndoReport> {
             if exists(Path::new(path)) {
                 continue; // already back, or its rename could not be reversed (reported above)
             }
-            if let Err(err) = ctx.bin.restore(Path::new(path)) {
+            let before = binned.contains(&key(path)).then_some(started);
+            if let Err(err) = ctx.bin.restore(Path::new(path), before) {
                 rep.skipped.push(Skipped { path: path.clone(), reason: format!("restore it from the Recycle Bin ({err})") });
             }
         }
@@ -377,20 +421,23 @@ mod tests {
     /// Test double for the Recycle Bin: moves files into `_bin` and back.
     struct FakeBin {
         dir: PathBuf,
-        items: RefCell<Vec<(PathBuf, PathBuf)>>,
+        items: RefCell<Vec<(PathBuf, PathBuf, SystemTime)>>,
     }
     impl Bin for FakeBin {
         fn trash(&self, p: &Path) -> io::Result<()> {
             let mut items = self.items.borrow_mut();
             let dest = self.dir.join(items.len().to_string());
             fs::rename(p, &dest)?;
-            items.push((p.to_path_buf(), dest));
+            items.push((p.to_path_buf(), dest, SystemTime::now()));
             Ok(())
         }
-        fn restore(&self, p: &Path) -> io::Result<()> {
+        fn restore(&self, p: &Path, before: Option<SystemTime>) -> io::Result<()> {
             let mut items = self.items.borrow_mut();
-            let i = items.iter().rposition(|(orig, _)| key(orig) == key(p)).ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
-            let (orig, dest) = items.remove(i);
+            let i = items
+                .iter()
+                .rposition(|(orig, _, t)| before.is_none_or(|b| *t < b) && key(orig) == key(p))
+                .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
+            let (orig, dest, _) = items.remove(i);
             fs::rename(dest, orig)
         }
     }
@@ -547,10 +594,71 @@ mod tests {
         let a = t.write("a.pdf", "A");
         let tmp = t.p(".~vellova-b1-1-0.tmp");
         fs::rename(&a, &tmp).unwrap();
-        Journal::open(&t.journal()).unwrap().add(&Entry::Temp { from: a.clone(), tmp });
+        Journal::open(&t.journal()).unwrap().add(&Entry::Temp { from: a.clone(), tmp, to: t.p("x.pdf") });
         assert_eq!(recover(&t.journal()).unwrap(), 1);
         assert_eq!(t.names(), ["a.pdf"]);
         assert_eq!(recover(&t.journal()).unwrap(), 0);
+    }
+
+    #[test]
+    fn recover_finishes_a_swap_stopped_half_way() {
+        let t = T::new();
+        let (a, b) = (t.write("a.pdf", "A"), t.write("b.pdf", "B"));
+        let (ta, tb) = (t.p(".~vellova-b1-1-0.tmp"), t.p(".~vellova-b1-1-1.tmp"));
+        fs::rename(&a, &ta).unwrap();
+        fs::rename(&b, &tb).unwrap();
+        fs::rename(&ta, &b).unwrap(); // killed after the first file reached its new name
+        {
+            let mut j = Journal::open(&t.journal()).unwrap();
+            j.add(&Entry::Temp { from: a.clone(), tmp: ta.clone(), to: b.clone() });
+            j.add(&Entry::Temp { from: b.clone(), tmp: tb, to: a.clone() });
+            j.add(&Entry::Final { from: a, tmp: ta, to: b, size: 1, mtime: 0 });
+        }
+        assert_eq!(recover(&t.journal()).unwrap(), 1);
+        assert_eq!(t.names(), ["a.pdf", "b.pdf"]);
+        assert_eq!((t.read("a.pdf"), t.read("b.pdf")), ("B".into(), "A".into()));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_chain_behind_a_locked_file_never_overwrites_anything() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let t = T::new();
+        let (a, b, c) = (t.write("a.pdf", "A"), t.write("b.pdf", "B"), t.write("c.pdf", "C"));
+        let lock = OpenOptions::new().read(true).share_mode(0).open(&b).unwrap();
+        let r = t.apply(&[rn(&c, &a), rn(&a, &b), rn(&b, &t.p("d.pdf"))]);
+        drop(lock);
+        assert_eq!(t.names(), ["a.pdf", "b.pdf", "c.pdf"]);
+        assert_eq!((t.read("a.pdf"), t.read("b.pdf"), t.read("c.pdf")), ("A".into(), "B".into(), "C".into()));
+        assert_eq!((r[0].code, r[1].code, r[2].code), (Some("exists"), Some("exists"), Some("locked")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_locked_source_keeps_the_file_it_would_replace() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let t = T::new();
+        let (a, x) = (t.write("a.pdf", "A"), t.write("x.pdf", "OLD"));
+        let lock = OpenOptions::new().read(true).share_mode(0).open(&a).unwrap();
+        let mut op = rn(&a, &x);
+        op.replace = true;
+        let r = t.apply(&[op]);
+        drop(lock);
+        assert_eq!(r[0].code, Some("locked"));
+        assert_eq!((t.read("a.pdf"), t.read("x.pdf")), ("A".into(), "OLD".into()));
+    }
+
+    #[test]
+    fn undo_of_a_replacing_copy_brings_back_the_replaced_file() {
+        let t = T::new();
+        let (a, x) = (t.write("a.pdf", "A"), t.write("x.pdf", "OLD"));
+        let mut op = cp(&a, &x);
+        op.replace = true;
+        assert!(t.apply(&[op])[0].ok);
+        assert_eq!(t.read("x.pdf"), "A");
+        let rep = t.undo();
+        assert_eq!((rep.restored, rep.skipped), (1, vec![]));
+        assert_eq!((t.read("a.pdf"), t.read("x.pdf")), ("A".into(), "OLD".into()));
     }
 
     #[test]

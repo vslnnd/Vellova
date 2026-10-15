@@ -136,7 +136,9 @@ fn walk(p: &Path, recursive: bool, top: bool, out: &mut Vec<FileInfo>) {
         // ponytail: read_dir order (NTFS name order) is what Nomina 1.4.6 saw, and it decides who gets " (1)"
         if let Ok(rd) = fs::read_dir(p) {
             for e in rd.flatten() {
-                walk(&e.path(), recursive, false, out);
+                // a linked folder (junction, symlink) is not entered: it can loop back or lead elsewhere
+                let link = e.file_type().is_ok_and(|t| t.is_symlink());
+                walk(&e.path(), recursive && !link, false, out);
             }
         }
     }
@@ -249,6 +251,24 @@ mod tests {
         for bad in ["log.txt", "out/log.txt", "\\log.txt", "C:log.txt", "C:/out/app.exe", "C:/out/run.bat", "C:/out/noext", "C:/out/log.txt.exe", "C:/out/", ""] {
             assert!(export_path(bad).is_err(), "{bad}");
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn walk_does_not_follow_folder_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.pdf");
+        fs::write(&a, "A").unwrap();
+        let made = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(dir.path().join("loop"))
+            .arg(dir.path())
+            .output()
+            .unwrap();
+        assert!(made.status.success(), "{made:?}");
+        let mut out = Vec::new();
+        walk(dir.path(), true, true, &mut out);
+        assert_eq!(out.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), [a.to_string_lossy()]);
     }
 
     #[test]
