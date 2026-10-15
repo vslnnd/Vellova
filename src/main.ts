@@ -7,6 +7,7 @@ import App from './App.svelte';
 import { setTheme } from './lib/app.svelte';
 import { watchSystemTheme } from './lib/shell/theme';
 import { data, loadAll, log } from './lib/shared/state.svelte';
+import { ipc } from './lib/shared/ipc';
 
 setTheme('system');
 loadAll()
@@ -16,4 +17,7 @@ loadAll()
     watchSystemTheme(() => setTheme(data.settings.theme));
     mount(App, { target: document.getElementById('app')! });
     void getCurrentWindow().show();
+    void ipc.recoverAll().then((n) => {
+      if (n) log({ level: 'warn', tool: 'app', message: `${n} file(s) from an interrupted batch were put back under their original names.` });
+    });
   });

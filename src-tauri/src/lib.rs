@@ -1,4 +1,5 @@
 mod files;
+mod ops;
 
 use tauri::Manager;
 use tauri_plugin_window_state::StateFlags;
@@ -29,6 +30,13 @@ pub fn run() {
             files::data_rename,
             files::read_legacy,
             files::save_text,
+            files::read_file,
+            files::list_files,
+            files::list_dir,
+            files::apply_plan,
+            files::undo_batch,
+            files::cancel_apply,
+            files::recover_all,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Vellova");

@@ -1,9 +1,11 @@
 //! Commands the front end uses for its own data files and for reading old app data.
 
+use crate::ops::{self, Op, OpResult, UndoReport};
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf, Prefix};
-use tauri::{AppHandle, Manager};
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{AppHandle, Emitter, Manager};
 
 pub(crate) fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -96,6 +98,103 @@ pub async fn read_legacy(app: AppHandle, files: Vec<String>) -> Result<Vec<Optio
 #[tauri::command]
 pub async fn save_text(path: String, text: String) -> Result<(), String> {
     fs::write(export_path(&path)?, text).map_err(err)
+}
+
+static CANCEL: AtomicBool = AtomicBool::new(false);
+
+#[derive(serde::Serialize)]
+pub struct FileInfo {
+    path: String,
+    size: u64,
+    mtime: u64,
+}
+
+/// Raw bytes of a file, sent to the WebView without JSON encoding. Errors read "<code>: <message>".
+#[tauri::command]
+pub async fn read_file(path: String) -> Result<tauri::ipc::Response, String> {
+    fs::read(&path).map(tauri::ipc::Response::new).map_err(|e| format!("{}: {e}", ops::code(&e)))
+}
+
+/// Files under the given paths. Folders are listed one level deep, or fully with `recursive`.
+#[tauri::command]
+pub async fn list_files(paths: Vec<String>, recursive: bool) -> Vec<FileInfo> {
+    let mut out = Vec::new();
+    for p in paths {
+        walk(Path::new(&p), recursive, true, &mut out);
+    }
+    out
+}
+
+fn walk(p: &Path, recursive: bool, top: bool, out: &mut Vec<FileInfo>) {
+    let Ok(md) = fs::metadata(p) else { return };
+    if md.is_file() {
+        let ours = p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(".~vellova-"));
+        if !ours {
+            out.push(FileInfo { path: p.to_string_lossy().into_owned(), size: md.len(), mtime: ops::mtime_ms(&md) });
+        }
+    } else if md.is_dir() && (top || recursive) {
+        // ponytail: read_dir order (NTFS name order) is what Nomina 1.4.6 saw, and it decides who gets " (1)"
+        if let Ok(rd) = fs::read_dir(p) {
+            for e in rd.flatten() {
+                walk(&e.path(), recursive, false, out);
+            }
+        }
+    }
+}
+
+/// Every entry in the given folders (missing folders give nothing), for conflict checks.
+#[tauri::command]
+pub async fn list_dir(dirs: Vec<String>) -> Vec<String> {
+    dirs.iter()
+        .filter_map(|d| fs::read_dir(d).ok())
+        .flat_map(|rd| rd.flatten().map(|e| e.path().to_string_lossy().into_owned()))
+        .collect()
+}
+
+fn journal(app: &AppHandle, batch: &str, suffix: &str) -> Result<PathBuf, String> {
+    if batch.is_empty() || !batch.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err("invalid batch id".into());
+    }
+    Ok(data_dir(app)?.join("journal").join(format!("{batch}{suffix}")))
+}
+
+#[tauri::command]
+pub async fn apply_plan(app: AppHandle, batch: String, ops: Vec<Op>) -> Result<Vec<OpResult>, String> {
+    let path = journal(&app, &batch, ".jsonl")?;
+    CANCEL.store(false, Ordering::SeqCst);
+    let progress = |done: usize, total: usize| {
+        let _ = app.emit("plan-progress", (done, total));
+    };
+    let ctx = ops::Ctx { journal: &path, bin: &ops::RecycleBin, progress: &progress, cancel: &CANCEL };
+    ops::apply(&ctx, &batch, &ops).map_err(err)
+}
+
+#[tauri::command]
+pub async fn undo_batch(app: AppHandle, batch: String) -> Result<UndoReport, String> {
+    let path = journal(&app, &batch, ".jsonl")?;
+    let undo_path = journal(&app, &batch, ".undo.jsonl")?;
+    CANCEL.store(false, Ordering::SeqCst);
+    let progress = |_: usize, _: usize| {};
+    let ctx = ops::Ctx { journal: &path, bin: &ops::RecycleBin, progress: &progress, cancel: &CANCEL };
+    ops::undo(&ctx, &undo_path).map_err(err)
+}
+
+/// Stops a running batch before its next file; files already moved aside still reach their names.
+#[tauri::command]
+pub fn cancel_apply() {
+    CANCEL.store(true, Ordering::SeqCst);
+}
+
+/// Puts back files left under temporary names by a run that was interrupted (crash, power cut).
+#[tauri::command]
+pub async fn recover_all(app: AppHandle) -> Result<usize, String> {
+    let Ok(rd) = fs::read_dir(data_dir(&app)?.join("journal")) else { return Ok(0) };
+    Ok(rd
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+        .map(|p| ops::recover(&p).unwrap_or(0))
+        .sum())
 }
 
 #[cfg(test)]

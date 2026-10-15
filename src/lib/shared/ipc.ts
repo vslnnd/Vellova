@@ -1,4 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { FileInfo, Op, Reason } from './types';
+
+export type OpResult = { i: number; ok: boolean; code?: Reason | 'cancelled'; message?: string };
+export type UndoReport = { restored: number; skipped: { path: string; reason: string }[] };
 
 export const ipc = {
   dataRead: (name: string) => invoke<string | null>('data_read', { name }),
@@ -6,4 +10,20 @@ export const ipc = {
   dataRename: (from: string, to: string) => invoke<void>('data_rename', { from, to }),
   readLegacy: (files: string[]) => invoke<(string | null)[]>('read_legacy', { files }),
   saveText: (path: string, text: string) => invoke<void>('save_text', { path, text }),
+  readFile: async (path: string) => new Uint8Array(await invoke<ArrayBuffer>('read_file', { path })),
+  listFiles: (paths: string[], recursive: boolean) => invoke<FileInfo[]>('list_files', { paths, recursive }),
+  listDir: (dirs: string[]) => invoke<string[]>('list_dir', { dirs }),
+  applyPlan: (batch: string, ops: Op[]) => invoke<OpResult[]>('apply_plan', { batch, ops }),
+  undoBatch: (batch: string) => invoke<UndoReport>('undo_batch', { batch }),
+  cancelApply: () => invoke<void>('cancel_apply'),
+  recoverAll: () => invoke<number>('recover_all'),
 };
+
+const FILE_REASONS: Reason[] = ['missing', 'permission', 'locked'];
+
+/** Turns a `read_file` rejection ("locked: …") into a reason for the preview. */
+export function ipcReason(e: unknown): { reason: Reason; detail: string } {
+  const msg = String(e);
+  const code = msg.slice(0, msg.indexOf(':')) as Reason;
+  return FILE_REASONS.includes(code) ? { reason: code, detail: msg.slice(code.length + 1).trim() } : { reason: 'unreadable', detail: msg };
+}
