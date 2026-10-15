@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path, PathBuf, Prefix};
 use tauri::{AppHandle, Manager};
 
 pub(crate) fn err(e: impl std::fmt::Display) -> String {
@@ -35,14 +35,19 @@ pub(crate) fn read_data(path: &Path) -> Result<Option<String>, String> {
     }
 }
 
-/// An export path from a save dialog: absolute, and a `.txt` or `.json` file (the only kinds the app writes).
+/// An export path from a save dialog: on a local drive (`C:\` or `\\?\C:\`; never UNC, device or other verbatim
+/// paths, which could reach a network share), absolute, and a `.txt` or `.json` file (the only kinds the app writes).
 pub(crate) fn export_path(path: &str) -> Result<&Path, String> {
     let p = Path::new(path);
     let ext_ok = p
         .extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| e.eq_ignore_ascii_case("txt") || e.eq_ignore_ascii_case("json"));
-    if p.is_absolute() && ext_ok { Ok(p) } else { Err(format!("cannot save to {path}")) }
+    let drive = matches!(
+        p.components().next(),
+        Some(Component::Prefix(pre)) if matches!(pre.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+    );
+    if drive && p.is_absolute() && ext_ok { Ok(p) } else { Err(format!("cannot save to {path}")) }
 }
 
 /// Writes a temp file next to `path`, then renames it over `path` (Windows replaces the old file).
@@ -139,10 +144,24 @@ mod tests {
 
     #[test]
     fn export_path_must_be_absolute_txt_or_json() {
-        for good in ["C:/out/log.txt", "C:/out/Log.TXT", "C:/out/profiles.json", "C:\\out\\log.txt"] {
+        for good in ["C:/out/log.txt", "C:/out/Log.TXT", "C:/out/profiles.json", "C:\\out\\log.txt", "\\\\?\\C:\\out\\log.txt"] {
             assert!(export_path(good).is_ok(), "{good}");
         }
         for bad in ["log.txt", "out/log.txt", "\\log.txt", "C:log.txt", "C:/out/app.exe", "C:/out/run.bat", "C:/out/noext", "C:/out/log.txt.exe", "C:/out/", ""] {
+            assert!(export_path(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn export_path_rejects_network_and_device_paths() {
+        for bad in [
+            "\\\\server\\share\\x.txt",
+            "//server/share/x.txt",
+            "\\\\?\\UNC\\server\\share\\x.txt",
+            "\\\\.\\C:\\x.txt",
+            "\\\\.\\pipe\\x.txt",
+            "\\\\?\\GLOBALROOT\\x.txt",
+        ] {
             assert!(export_path(bad).is_err(), "{bad}");
         }
     }
