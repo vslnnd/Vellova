@@ -37,6 +37,20 @@ describe('loadJson', () => {
   });
 });
 
+describe('loadJson failures', () => {
+  it('rejects when the file cannot be read, so the caller leaves it alone', async () => {
+    const io = { ...fakeIO({}), read: async () => { throw new Error('locked'); } };
+    await expect(loadJson(io, 'settings.json', {}, isObj, vi.fn())).rejects.toThrow('locked');
+  });
+
+  it('rejects when a bad file cannot be set aside, without reporting it as set aside', async () => {
+    const io = { ...fakeIO({ 'settings.json': '{"a":' }), rename: async () => { throw new Error('antivirus lock'); } };
+    const onCorrupt = vi.fn();
+    await expect(loadJson(io, 'settings.json', {}, isObj, onCorrupt, NOW)).rejects.toThrow('antivirus lock');
+    expect(onCorrupt).not.toHaveBeenCalled();
+  });
+});
+
 describe('settings defaults', () => {
   it('fills missing and nested values', () => {
     expect(withDefaults({ theme: 'light', updates: { everyHours: 24 } })).toEqual({
@@ -67,8 +81,8 @@ describe('log', () => {
   });
 
   it('exports tab-separated lines', () => {
-    expect(logToText([{ t: NOW.getTime(), level: 'error', tool: 'rename', file: 'C:\a.pdf', message: 'locked', detail: 'os error 32' }]))
-      .toBe('2026-10-15T12:00:00.000Z\tERROR\trename\tC:\a.pdf\tlocked\tos error 32');
+    expect(logToText([{ t: NOW.getTime(), level: 'error', tool: 'rename', file: 'C:\\a.pdf', message: 'locked', detail: 'os error 32' }]))
+      .toBe('2026-10-15T12:00:00.000Z\tERROR\trename\tC:\\a.pdf\tlocked\tos error 32');
   });
 });
 

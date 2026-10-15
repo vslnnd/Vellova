@@ -16,12 +16,33 @@ pub(crate) fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// File names the front end may use inside the data folder: letters, digits, `.`, `-`, `_`, and no `..`.
+/// File names the front end may use inside the data folder: start with a letter or digit, then letters,
+/// digits, `.`, `-`, `_`, and no `..`.
 pub(crate) fn safe_name(name: &str) -> Result<&str, String> {
-    let ok = !name.is_empty()
+    let ok = name.starts_with(|c: char| c.is_ascii_alphanumeric())
         && !name.contains("..")
         && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'));
     if ok { Ok(name) } else { Err(format!("invalid data file name: {name}")) }
+}
+
+/// Reads a data file as text. Missing gives `None`. Bad encoding is replaced, never an error: the JSON
+/// then fails to parse and the front end sets the file aside instead of failing the whole load.
+pub(crate) fn read_data(path: &Path) -> Result<Option<String>, String> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(err(e)),
+    }
+}
+
+/// An export path from a save dialog: absolute, and a `.txt` or `.json` file (the only kinds the app writes).
+pub(crate) fn export_path(path: &str) -> Result<&Path, String> {
+    let p = Path::new(path);
+    let ext_ok = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("txt") || e.eq_ignore_ascii_case("json"));
+    if p.is_absolute() && ext_ok { Ok(p) } else { Err(format!("cannot save to {path}")) }
 }
 
 /// Writes a temp file next to `path`, then renames it over `path` (Windows replaces the old file).
@@ -41,11 +62,7 @@ pub(crate) fn legacy_path(base: &Path, rel: &str) -> Option<PathBuf> {
 #[tauri::command]
 pub async fn data_read(app: AppHandle, name: String) -> Result<Option<String>, String> {
     let path = data_dir(&app)?.join(safe_name(&name)?);
-    match fs::read_to_string(path) {
-        Ok(text) => Ok(Some(text)),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(err(e)),
-    }
+    read_data(&path)
 }
 
 #[tauri::command]
@@ -73,7 +90,7 @@ pub async fn read_legacy(app: AppHandle, files: Vec<String>) -> Result<Vec<Optio
 /// Writes an export the user asked for (path chosen in a save dialog).
 #[tauri::command]
 pub async fn save_text(path: String, text: String) -> Result<(), String> {
-    fs::write(path, text).map_err(err)
+    fs::write(export_path(&path)?, text).map_err(err)
 }
 
 #[cfg(test)]
@@ -92,7 +109,7 @@ mod tests {
 
     #[test]
     fn safe_name_rejects_paths() {
-        for bad in ["", "..", "../x.json", "a/b.json", "a\\b.json", "C:x.json"] {
+        for bad in ["", ".", "..", ".x.json", "../x.json", "a/b.json", "a\\b.json", "C:x.json"] {
             assert!(safe_name(bad).is_err(), "{bad}");
         }
         for good in ["settings.json", "log.jsonl", "history.corrupt-2026-10-15T12-00-00-000Z.json"] {
@@ -106,6 +123,27 @@ mod tests {
         assert_eq!(legacy_path(base, "Nomina/nomina-profiles.json"), Some(base.join("Nomina/nomina-profiles.json")));
         for bad in ["../secret.json", "C:\\x.json", "\\x.json", "Nomina/../../x"] {
             assert_eq!(legacy_path(base, bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn read_data_gives_none_for_missing_and_survives_bad_encoding() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        assert_eq!(read_data(&p).unwrap(), None);
+        fs::write(&p, [b'{', 0xff, 0xfe, b'}']).unwrap();
+        let text = read_data(&p).unwrap().unwrap();
+        assert!(text.starts_with('{') && text.ends_with('}'));
+        assert!(serde_json::from_str::<serde_json::Value>(&text).is_err());
+    }
+
+    #[test]
+    fn export_path_must_be_absolute_txt_or_json() {
+        for good in ["C:/out/log.txt", "C:/out/Log.TXT", "C:/out/profiles.json", "C:\\out\\log.txt"] {
+            assert!(export_path(good).is_ok(), "{good}");
+        }
+        for bad in ["log.txt", "out/log.txt", "\\log.txt", "C:log.txt", "C:/out/app.exe", "C:/out/run.bat", "C:/out/noext", "C:/out/log.txt.exe", "C:/out/", ""] {
+            assert!(export_path(bad).is_err(), "{bad}");
         }
     }
 }
