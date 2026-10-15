@@ -1,3 +1,5 @@
+mod files;
+
 use tauri::Manager;
 use tauri_plugin_window_state::StateFlags;
 
@@ -21,6 +23,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
+        .invoke_handler(tauri::generate_handler![
+            files::data_read,
+            files::data_write,
+            files::data_rename,
+            files::read_legacy,
+            files::save_text,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Vellova");
 }
