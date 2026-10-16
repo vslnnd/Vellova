@@ -12,7 +12,7 @@ A new user goes from first launch to a first renamed batch without guessing, and
 - The tour is hands-on. Steps wait for the real action, and the user's actions are real app actions on sample files.
 - It is built into the app (approach A). There is no tour library and no new dependency.
 - Sample files ship with the app: five synthetic invoice PDFs, one with no invoice number, plus one matching `.xlsx`. They are made by `scripts/make-fixtures.mjs` and contain no real data.
-- While the tour runs, only the highlighted control and the hint's own buttons can be clicked or reached by keyboard. The rest of the app is blocked.
+- While the tour runs, only the highlighted control and the hint's own buttons can be clicked or reached by keyboard. The rest of the app is blocked, except the window's own controls (drag, minimize, maximize, close).
 - The tour leaves nothing behind. The sample folder, the sample profile and the sample batch in History are all removed when it ends, is skipped, or on the next start after a crash.
 - It can be replayed from Settings via **Show the tour again**.
 - Old app names never appear (global constraint).
@@ -45,7 +45,7 @@ Both buttons set `welcomed` to true. Esc acts like **Skip**.
 
 ### Targets
 
-Elements carry `data-tour="<id>"`. The spotlight measures the target with `getBoundingClientRect` and re-measures on resize, scroll and layout changes (ResizeObserver). If the target isn't in the DOM, the step waits; it never points at empty space.
+Elements carry `data-tour="<id>"`. The spotlight measures the target with `getBoundingClientRect` and re-measures it every animation frame, which also covers resize, scroll and layout changes. If the target isn't visible, the step waits; it never points at empty space.
 
 ### Steps
 
@@ -80,7 +80,7 @@ The counter covers steps 3–16, shown as 1–14.
 | 4 | Keyword field | "Type `Invoice No.:` — the label printed just before each number." | the keyword is set and no file is pending |
 | 5 | Position buttons | "The number comes *after* the label. Pick Below or Above when your invoices put it under or over it." | Next |
 | 6 | Preview list | "Every new name, before anything changes." | Next |
-| 7 | Row of the PDF with no number | "This invoice has no number, so Vellova asks you. Type a name for it." | that row has a typed name |
+| 7 | Row of the PDF with no number | "This invoice has no number, so Vellova asks you. Type a name for it, then press Enter." | that row has a typed name |
 | 8 | The matching `.xlsx` row | "The spreadsheet with the same number gets the same new name automatically." | Next |
 | 9 | Apply button | "Rename them." | the batch has finished |
 | 10 | Island Undo | "Changed your mind? Undo puts every name back — it's also in History any time later." | the undo has finished |
@@ -88,7 +88,7 @@ The counter covers steps 3–16, shown as 1–14.
 | 12 | Island Rename/Split | "Switch tools here. Split arrives in the next update." | Next |
 | 13 | Island History | "History: every batch, undoable, plus the log." | Next |
 | 14 | Island Profiles | "Profiles: your saved setups." | Next |
-| 15 | Island Settings | "Settings: theme, conflicts, updates — and this tour again." | Next |
+| 15 | Island Settings | "Settings: theme, updates — and this tour again." | Next |
 | 16 | Theme switch | "Light or dark." | Next |
 | 17 | Done card | "You're set. You can replay this tour from Settings." | **Finish** (then cleanup) |
 
@@ -121,9 +121,9 @@ A new Help card at the end of Settings holds **Show the tour again**. It starts 
 
 - four PDFs in the same-line style, `Invoice No.: INV-2041` … `INV-2044`;
 - one PDF with no invoice number;
-- `INV-2042.xlsx`, whose cell matches the second PDF.
+- `export_0012.xlsx`, whose cell `INV-2042` matches the second PDF. It needs a neutral name: a file already called `INV-2042.xlsx` would show as unchanged.
 
-The PDFs have neutral names (`scan_0012.pdf` …). The resources add under 100 KB.
+The PDFs have neutral names (`scan_0011.pdf` … `scan_0015.pdf`; `scan_0014.pdf` is the one without a number). The resources add under 100 KB.
 
 ## Testing
 
