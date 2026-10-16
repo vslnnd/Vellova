@@ -71,6 +71,21 @@ describe('loadAll', () => {
 });
 
 describe('save', () => {
+  it('a write that cannot be serialised does not block later saves, and flush still resolves', async () => {
+    const s = await load();
+    await s.loadAll();
+    (s.data.settings as any).bad = 1n; // JSON.stringify throws
+    s.save('settings');
+    await s.flush();
+    expect(s.data.log.at(-1)).toMatchObject({ level: 'error', message: 'Could not save settings.json' });
+    delete (s.data.settings as any).bad;
+    expect(written()).toContain('log.jsonl'); // the log entry scheduled by the failed write is saved too
+    m.write.mockClear();
+    s.save('settings');
+    await s.flush();
+    expect(written()).toContain('settings.json');
+  });
+
   it('flush waits for a write already in flight and serialises writes per file', async () => {
     const s = await load();
     await s.loadAll();

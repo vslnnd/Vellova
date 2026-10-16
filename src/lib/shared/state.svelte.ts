@@ -50,15 +50,17 @@ const inflight = new Map<Kind, Promise<void>>();
 function write(kind: Kind) {
   timers.delete(kind);
   const run = async () => {
-    const text = kind === 'log'
-      ? data.log.map((e) => JSON.stringify(e)).join('\n')
-      : JSON.stringify($state.snapshot(data[kind]), null, 2);
-    await ipc.dataWrite(FILE[kind], text).catch((e) => {
+    try {
+      const text = kind === 'log'
+        ? data.log.map((e) => JSON.stringify(e)).join('\n')
+        : JSON.stringify($state.snapshot(data[kind]), null, 2);
+      await ipc.dataWrite(FILE[kind], text);
+    } catch (e) {
       console.error(`saving ${FILE[kind]} failed`, e);
       if (kind !== 'log') log({ level: 'error', tool: 'app', message: `Could not save ${FILE[kind]}`, detail: String(e) });
-    });
+    }
   };
-  const p = (inflight.get(kind) ?? Promise.resolve()).then(run);
+  const p = (inflight.get(kind) ?? Promise.resolve()).then(run); // run never rejects
   inflight.set(kind, p);
   void p.then(() => { if (inflight.get(kind) === p) inflight.delete(kind); });
   return p;
@@ -73,9 +75,11 @@ export function save(kind: Kind) {
 
 /** Writes pending saves now and waits for writes already running (before closing or restarting). */
 export async function flush() {
-  const kinds = [...timers.keys()];
-  kinds.forEach((k) => clearTimeout(timers.get(k)));
-  kinds.forEach(write);
-  // A failed write can log, which schedules a log save: go round until nothing is left.
-  while (inflight.size) await Promise.all([...inflight.values()]);
+  // A failed write logs, which schedules a log save: go round until nothing is left (bounded).
+  for (let i = 0; i < 5 && (timers.size || inflight.size); i++) {
+    const kinds = [...timers.keys()];
+    kinds.forEach((k) => clearTimeout(timers.get(k)));
+    kinds.forEach(write);
+    await Promise.all([...inflight.values()]);
+  }
 }

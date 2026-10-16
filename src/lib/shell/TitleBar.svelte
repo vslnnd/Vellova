@@ -11,8 +11,11 @@
   onMount(() => {
     const off = win.onCloseRequested(async (e) => {
       e.preventDefault();
-      await flush();
-      await win.destroy();
+      try {
+        await Promise.race([flush(), new Promise((r) => setTimeout(r, 2000))]); // never trap the user in a window that will not close
+      } finally {
+        await win.destroy();
+      }
     });
     return () => void off.then((f) => f());
   });
