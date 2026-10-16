@@ -107,4 +107,8 @@ export function mergeBatch(history: Batch[], b: Batch): Batch[] {
   return capHistory([merged, ...history.filter((h) => h.id !== b.id)]);
 }
 
-export const lastUndoable = (history: Batch[]) => history.find((b) => b.undoable && !b.undone);
+/** Takes back what was recorded under `id` since `prev` (its earlier entry, if any); other batches stay as they are now. */
+export const putBackBatch = (history: Batch[], id: string, prev: Batch | undefined): Batch[] =>
+  prev ? history.map((h) => (h.id === id ? prev : h)) : history.filter((h) => h.id !== id);
+
+export const lastUndoable =(history: Batch[]) => history.find((b) => b.undoable && !b.undone);

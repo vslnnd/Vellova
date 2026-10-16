@@ -529,8 +529,13 @@ pub fn undo(ctx: &Ctx, undo_journal: &Path) -> io::Result<UndoReport> {
     for journal in [ctx.journal, undo_journal] {
         rep.skipped.extend(recover(journal, ctx.bin)?.skipped);
     }
-    let entries = read_journal(ctx.journal)?;
-    let same = |p: &str, size: u64, mtime: u64| stat(Path::new(p)).is_ok_and(|st| st == (size, mtime));
+    let entries = match read_journal(ctx.journal) {
+        Ok(e) => e,
+        // no journal: the batch never got to its first op, so there is nothing to undo
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(rep),
+        Err(e) => return Err(e),
+    };
+    let same =|p: &str, size: u64, mtime: u64| stat(Path::new(p)).is_ok_and(|st| st == (size, mtime));
     let mut binned: HashSet<String> = HashSet::new();
 
     for e in entries.iter().rev() {
@@ -693,6 +698,13 @@ mod tests {
     }
     fn cp(from: &str, to: &str) -> Op {
         Op { kind: Kind::Copy, from: from.into(), to: to.into(), replace: false }
+    }
+
+    #[test]
+    fn undo_of_a_batch_that_never_started_is_empty() {
+        // the app stopped after History recorded the batch but before its journal existed
+        let r = T::new().undo();
+        assert_eq!((r.restored, r.skipped.len()), (0, 0));
     }
 
     #[test]

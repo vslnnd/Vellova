@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  DEFAULT_SETTINGS, lastUndoable, loadJson, logToText, mergeBatch, parseLog, pruneLog, withDefaults,
+  DEFAULT_SETTINGS, lastUndoable, loadJson, logToText, mergeBatch, parseLog, pruneLog, putBackBatch, withDefaults,
   type DataIO, type LogEntry,
 } from '../src/lib/shared/store';
 import type { Batch } from '../src/lib/shared/types';
@@ -107,6 +107,13 @@ describe('history', () => {
     expect(h[0].items).toEqual([{ from: 'b', to: 'B', ok: true }]);
     expect(h[0].undoable).toBe(true);
     expect(h[0].summary).toBe('1 file renamed');
+  });
+
+  it('puts back only the given batch, keeping changes made to the others meanwhile', () => {
+    const old = batch('b1', [{ from: 'a', to: 'A', ok: false, reason: 'locked' }]);
+    const now = [batch('b1', [{ from: 'a', to: 'A', ok: false, pending: true }]), batch('b2', []), batch('b0', [])];
+    expect(putBackBatch(now, 'b1', old)).toEqual([old, now[1], now[2]]);
+    expect(putBackBatch(now, 'b1', undefined).map((b) => b.id)).toEqual(['b2', 'b0']);
   });
 
   it('keeps the last 200 batches', () => {

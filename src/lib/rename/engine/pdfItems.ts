@@ -27,7 +27,8 @@ export async function extractItems(doc: DocLike): Promise<Item[]> {
 export function classifyPdfError(e: unknown): { reason: 'unreadable' | 'internal'; detail: string } {
   const err = e as { name?: string; message?: string } | null;
   if (err?.name === 'PasswordException') return { reason: 'unreadable', detail: 'This PDF is password-protected.' };
-  if (err?.name === 'InvalidPDFException' || err?.name === 'MissingPDFException') {
+  // pdf.js's own parse errors (FormatError, UnknownErrorException wraps the rest) are about the file; the worker is fine
+  if (['InvalidPDFException', 'MissingPDFException', 'FormatError', 'UnknownErrorException'].includes(err?.name ?? '')) {
     return { reason: 'unreadable', detail: "This file isn't a readable PDF (it is damaged or empty)." };
   }
   return { reason: 'internal', detail: String(err?.message ?? e) };

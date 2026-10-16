@@ -4,6 +4,7 @@ import { recordBatch, undoLast } from '../shared/batches';
 import { ipc, ipcReason, type OpResult } from '../shared/ipc';
 import { extOf, splitPath } from '../shared/names';
 import { data, flush, log, save } from '../shared/state.svelte';
+import { putBackBatch } from '../shared/store';
 import type { FileInfo, Reason, RenameProfile } from '../shared/types';
 import { island, send } from '../shell/islandState.svelte';
 import { readCompanion } from './companions';
@@ -48,6 +49,8 @@ export const session = $state({
   /** files fixed in Needs attention, for Apply fixes */
   fixed: [] as string[],
   loading: false,
+  /** the inputs changed (or a read was cancelled) and no read has finished since: values may be stale */
+  dirty: false,
   busy: false,
   /** the last batch, which Apply fixes adds to */
   batch: null as string | null,
@@ -89,19 +92,29 @@ export const plan = {
 };
 
 type Read<T> = { ok: true; data: T } | { ok: false; reason: Reason; detail: string };
-const pdfCache = new Map<string, Item[]>();
-const sheetCache = new Map<string, CompanionData>();
+const pdfCache = new Map<string, Read<Item[]>>();
+const sheetCache = new Map<string, Read<CompanionData>>();
 
-/** Reads and parses a file once per path, size and modified time. Failures aren't cached, so Retry reads again. */
+/** Forgets what was read from `path`, so the next refresh reads it again (Retry). */
+function evict(path: string) {
+  for (const cache of [pdfCache, sheetCache] as Map<string, unknown>[]) {
+    for (const k of cache.keys()) if (k.startsWith(`${path}|`)) cache.delete(k);
+  }
+}
+
+/**
+ * Reads and parses a file once per path, size and modified time. A file that can't be parsed is remembered too,
+ * so it isn't parsed on every keystroke; read errors (locked, missing…) and internal ones are not, they may pass.
+ */
 async function readCached<T>(
-  cache: Map<string, T>,
+  cache: Map<string, Read<T>>,
   f: FileInfo,
   parse: (bytes: Uint8Array) => Promise<T>,
   why: (e: unknown) => { reason: Reason; detail: string },
 ): Promise<Read<T>> {
   const key = `${f.path}|${f.size}|${f.mtime}`;
   const hit = cache.get(key);
-  if (hit) return { ok: true, data: hit };
+  if (hit) return hit;
   let bytes: Uint8Array;
   try {
     bytes = await ipc.readFile(f.path);
@@ -110,13 +123,14 @@ async function readCached<T>(
   }
   try {
     // `bytes` may be transferred to a worker here: it is not used again
-    const data = await parse(bytes);
-    cache.set(key, data);
-    return { ok: true, data };
+    const read: Read<T> = { ok: true, data: await parse(bytes) };
+    cache.set(key, read);
+    return read;
   } catch (e) {
-    const r = why(e);
-    if (r.reason === 'internal') log({ level: 'error', tool: 'rename', file: f.path, message: 'A reader stopped on this file and was restarted.', detail: r.detail });
-    return { ok: false, ...r };
+    const read: Read<T> = { ok: false, ...why(e) };
+    if (read.reason === 'internal') log({ level: 'error', tool: 'rename', file: f.path, message: 'A reader stopped on this file and was restarted.', detail: read.detail });
+    else cache.set(key, read);
+    return read;
   }
 }
 
@@ -126,6 +140,20 @@ const sheetError = (e: unknown) =>
     : { reason: 'unreadable' as const, detail: `This file can't be read (${String((e as Error)?.message ?? e)}).` };
 
 let generation = 0;
+/** The island shows our "Reading" layer. Only the current read may update or stop it; a newer read takes it over. */
+let reading = false;
+
+function stopReading() {
+  if (!reading) return;
+  reading = false;
+  send({ type: 'stop' });
+}
+
+/** The inputs changed: what is being read is stale, and Rename waits for the next refresh to finish. */
+export function invalidate() {
+  generation++;
+  session.dirty = true;
+}
 
 /** Reads what the preview needs and pairs companions. A newer call makes an older one stop. */
 export async function refresh() {
@@ -136,11 +164,10 @@ export async function refresh() {
   const keyword = rules.keyword.trim();
   const occurrence = Math.max(1, Math.floor(rules.occurrence) || 1);
   session.loading = true;
-  let shown = false;
   // the island only shows reading that takes a while
   const timer = setTimeout(() => {
-    if (stale() || island.activity) return;
-    shown = true;
+    if (stale() || (!reading && island.activity)) return;
+    reading = true;
     send({ type: 'start', label: 'Reading', total: files.length, cancellable: true });
   }, 300);
   try {
@@ -169,7 +196,8 @@ export async function refresh() {
         else values[f.path] = r;
       }
       session.values = { ...values };
-      if (shown) send({ type: 'progress', done: ++n, total: files.length });
+      n++;
+      if (reading) send({ type: 'progress', done: n, total: files.length });
     }
     // an empty value would be found in every companion
     const pdfs = files.flatMap((f) => {
@@ -177,10 +205,14 @@ export async function refresh() {
       return extOf(f.path) === PDF && v?.ok && v.value.trim() ? [{ path: f.path, value: v.value }] : [];
     });
     session.pairs = pairCompanions(pdfs, sheets);
+    session.dirty = false;
   } finally {
     clearTimeout(timer);
-    if (shown) send({ type: 'stop' });
-    if (!stale()) session.loading = false;
+    // a stale read leaves the island to whoever owns it now (a newer read, or a batch after a Cancel)
+    if (!stale()) {
+      stopReading();
+      session.loading = false;
+    }
   }
 }
 
@@ -251,6 +283,7 @@ export async function retry(path: string) {
     session.failures[path] = { reason: 'missing', detail: REASONS.missing.hint };
     return;
   }
+  evict(path);
   session.files = session.files.map((f) => (f.path === path ? fresh : f));
   markFixed(path);
 }
@@ -263,8 +296,11 @@ export function pickPdf(companion: string, pdf: string) {
 /** The island's Cancel: stops a running batch before its next file, or stops reading. */
 export function cancelActivity() {
   if (session.busy) return void ipc.cancelApply();
-  generation++;
+  // the values are half read: pairs made from older values must not be used, and Rename waits for a full read
+  invalidate();
   session.loading = false;
+  session.pairs = null;
+  reading = false;
   send({ type: 'stop' });
 }
 
@@ -272,7 +308,7 @@ const profileName = () => data.profiles.rename.find((p) => p.id === session.prof
 
 /** Applies the preview (or only `only`, inside the last batch). Done files leave the list; failures stay with a reason. */
 export async function runBatch(only?: string[]) {
-  if (session.busy || session.loading || island.activity) return;
+  if (session.busy || session.loading || session.dirty || island.activity) return;
   const pick = only && new Set(only);
   const run = plan.items.filter((i) => i.op && (pick ? pick.has(i.source) : i.status !== 'attention'));
   if (!run.length) return;
@@ -284,7 +320,8 @@ export async function runBatch(only?: string[]) {
   session.busy = true;
   send({ type: 'start', label: copy ? 'Copying' : 'Renaming', total: run.length, cancellable: true });
   const meta = { id, tool: 'rename' as const, verb: copy ? 'copied' : 'renamed', profile: profileName() };
-  const before = $state.snapshot(data.history);
+  // what History held under this id before (Apply fixes), to put back if the run records nothing
+  const prev = id === last?.id ? $state.snapshot(last) : undefined;
   // In History, saved, before anything moves: a batch the app never finished can still be undone.
   recordBatch({ ...meta, time: Date.now(), items: run.map((i) => ({ from: i.source, to: i.op!.to, ok: false, pending: true })), undoable: true });
   let unlisten = () => {};
@@ -295,10 +332,11 @@ export async function runBatch(only?: string[]) {
     results = await ipc.applyPlan(id, run.map((i) => i.op!));
   } catch (e) {
     // apply_plan fails only before its first op (another batch running, journal not writable): nothing moved
-    data.history = before;
+    data.history = putBackBatch(data.history, id, prev);
     save('history');
     log({ level: 'error', tool: 'rename', message: 'The batch could not run.', detail: String(e) });
     send({ type: 'stop' });
+    send({ type: 'restored', text: "Couldn't start · see History › Log" });
     return;
   } finally {
     unlisten();
@@ -314,7 +352,7 @@ export async function runBatch(only?: string[]) {
   }
   forget(done);
   // the real results replace the pending record; cancelled files leave it
-  data.history = before;
+  data.history = putBackBatch(data.history, id, prev);
   if (!batch.length) {
     save('history');
     return void send({ type: 'stop' }); // everything was cancelled

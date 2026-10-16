@@ -10,7 +10,7 @@
   import { summary } from './engine/planner';
   import Preview from './Preview.svelte';
   import RenameSettings from './RenameSettings.svelte';
-  import { addPaths, plan, refresh, runBatch, session } from './session.svelte';
+  import { addPaths, invalidate, plan, refresh, runBatch, session } from './session.svelte';
 
   let dragging = $state(false);
   const sum = $derived(summary(plan.items, session.rules.destination));
@@ -20,6 +20,7 @@
   $effect(() => {
     const r = session.rules;
     JSON.stringify([session.files, r.keyword, r.position, r.occurrence, r.pair, r.destination]);
+    invalidate(); // at once: Rename waits for the new values, not the old ones
     const t = setTimeout(() => void refresh(), 150);
     return () => clearTimeout(t);
   });
@@ -27,7 +28,7 @@
   // after a batch, the island's attention count follows the fixes made here (not mid-read, when rows are only waiting)
   $effect(() => {
     const n = sum.attention;
-    if (!session.loading && island.attention && island.attention !== n) send({ type: 'attention', count: n });
+    if (!session.loading && !session.dirty && island.attention && island.attention !== n) send({ type: 'attention', count: n });
   });
 
   onMount(() => {
@@ -64,7 +65,7 @@
     {/if}
     <span class="grow"></span>
     <button class="btn" disabled={!lastUndoable(data.history) || !!island.activity} onclick={() => void undoLast()}>Undo last batch</button>
-    <button class="btn primary" disabled={!sum.ops || session.loading || session.busy} onclick={() => void runBatch()}>{sum.label}</button>
+    <button class="btn primary" disabled={!sum.ops || session.loading || session.dirty || session.busy} onclick={() => void runBatch()}>{sum.label}</button>
   </footer>
   {#if dragging}<div class="drop" aria-hidden="true">Drop to add</div>{/if}
 </section>
