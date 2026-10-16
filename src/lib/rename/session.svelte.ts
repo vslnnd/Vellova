@@ -129,7 +129,11 @@ async function readCached<T>(
   } catch (e) {
     const read: Read<T> = { ok: false, ...why(e) };
     if (read.reason === 'internal') log({ level: 'error', tool: 'rename', file: f.path, message: 'A reader stopped on this file and was restarted.', detail: read.detail });
-    else cache.set(key, read);
+    else {
+      // remembered per file version, so this logs once, not on every keystroke
+      cache.set(key, read);
+      log({ level: 'warn', tool: 'rename', file: f.path, message: "This file couldn't be read.", detail: read.detail });
+    }
     return read;
   }
 }
@@ -153,6 +157,7 @@ function stopReading() {
 export function invalidate() {
   generation++;
   session.dirty = true;
+  session.loading = true; // a read follows shortly (Rename debounces); until then the screen says it is reading
 }
 
 /** Reads what the preview needs and pairs companions. A newer call makes an older one stop. */
@@ -206,6 +211,9 @@ export async function refresh() {
     });
     session.pairs = pairCompanions(pdfs, sheets);
     session.dirty = false;
+  } catch (e) {
+    // dirty stays set: the preview offers "Read again"
+    if (!stale()) log({ level: 'error', tool: 'rename', message: 'Reading the files stopped.', detail: String(e) });
   } finally {
     clearTimeout(timer);
     // a stale read leaves the island to whoever owns it now (a newer read, or a batch after a Cancel)
@@ -385,4 +393,4 @@ export function saveProfile(name?: string) {
 }
 
 // dev only: lets scripts/cdp.mjs drive the screen
-if (import.meta.env.DEV) Object.assign(window, { __rename: { session, plan, addPaths, runBatch, undoLast } });
+if (import.meta.env.DEV) Object.assign(window, { __rename: { session, plan, addPaths, runBatch, undoLast, cancelActivity, refresh } });

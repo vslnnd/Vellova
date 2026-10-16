@@ -24,9 +24,10 @@ describe('extractItems', () => {
     expect(classifyPdfError({ name: 'PasswordException', message: 'No password given' })).toEqual({ reason: 'unreadable', detail: 'This PDF is password-protected.' });
     expect(classifyPdfError({ name: 'InvalidPDFException', message: 'Invalid PDF structure.' }).reason).toBe('unreadable');
     expect(classifyPdfError(new Error('worker died'))).toEqual({ reason: 'internal', detail: 'worker died' });
-    // pdf.js's own parse errors are about the file, not the worker
-    expect(classifyPdfError({ name: 'FormatError', message: 'Bad FCHECK in flate stream' }).reason).toBe('unreadable');
-    expect(classifyPdfError({ name: 'UnknownErrorException', message: 'x' }).reason).toBe('unreadable');
+    // pdf.js wraps every other worker-side error as UnknownErrorException: the file's fault, but keep its text
+    expect(classifyPdfError({ name: 'UnknownErrorException', message: 'Bad FCHECK in flate stream', details: 'FormatError: Bad FCHECK in flate stream' }))
+      .toEqual({ reason: 'unreadable', detail: "This file isn't a readable PDF (pdf.js: FormatError: Bad FCHECK in flate stream)." });
+    expect(classifyPdfError({ name: 'UnknownErrorException', message: 'x' }).detail).toBe("This file isn't a readable PDF (pdf.js: x).");
   });
 });
 

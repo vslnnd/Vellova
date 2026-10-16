@@ -25,11 +25,15 @@ export async function extractItems(doc: DocLike): Promise<Item[]> {
 
 /** A plain-language reason for a PDF that pdf.js could not open. Unknown failures are 'internal' (e.g. a dead worker). */
 export function classifyPdfError(e: unknown): { reason: 'unreadable' | 'internal'; detail: string } {
-  const err = e as { name?: string; message?: string } | null;
+  const err = e as { name?: string; message?: string; details?: string } | null;
   if (err?.name === 'PasswordException') return { reason: 'unreadable', detail: 'This PDF is password-protected.' };
-  // pdf.js's own parse errors (FormatError, UnknownErrorException wraps the rest) are about the file; the worker is fine
-  if (['InvalidPDFException', 'MissingPDFException', 'FormatError', 'UnknownErrorException'].includes(err?.name ?? '')) {
+  if (err?.name === 'InvalidPDFException' || err?.name === 'MissingPDFException') {
     return { reason: 'unreadable', detail: "This file isn't a readable PDF (it is damaged or empty)." };
+  }
+  // pdf.js 3.11 wraps every other worker-side error (FormatError, TypeError…) in this; the worker itself is fine.
+  // ponytail: counted as the file's fault; pdf.js's own text stays in the detail so a real bug can still be traced
+  if (err?.name === 'UnknownErrorException') {
+    return { reason: 'unreadable', detail: `This file isn't a readable PDF (pdf.js: ${err.details || err.message}).` };
   }
   return { reason: 'internal', detail: String(err?.message ?? e) };
 }

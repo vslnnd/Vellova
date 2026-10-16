@@ -1,7 +1,7 @@
 <script lang="ts">
   import { extOf, splitExt, splitPath } from '../shared/names';
   import type { PlanItem, Status } from '../shared/types';
-  import { clearFiles, pickFiles, pickFolder, plan, removeFile, session, setName, skip } from './session.svelte';
+  import { clearFiles, pickFiles, pickFolder, plan, refresh, removeFile, session, setName, skip } from './session.svelte';
 
   const PILL: Record<Status, [string, string]> = {
     ready: ['ok', 'Ready'],
@@ -19,7 +19,12 @@
 <div class="card preview">
   <div class="row head">
     <h3>{session.files.length} {session.files.length === 1 ? 'file' : 'files'}</h3>
-    {#if session.loading}<span class="hint">reading…</span>{/if}
+    {#if session.loading}
+      <span class="hint">reading…</span>
+    {:else if session.dirty}
+      <span class="hint">Not fully read</span>
+      <button class="btn small" onclick={() => void refresh()}>Read again</button>
+    {/if}
     <span class="grow"></span>
     <button class="btn small" onclick={() => void pickFiles()}>Add files</button>
     <button class="btn small" onclick={() => void pickFolder()}>Add folder</button>
