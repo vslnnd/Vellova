@@ -33,7 +33,7 @@ export function planRename(input: PlanInput): PlanItem[] {
   for (;;) {
     const items = planOnce(input, leaving);
     const next = new Set(items.filter((i) => i.op?.kind === 'rename').map((i) => pathKey(i.source)));
-    if (next.size === leaving.size) return items;
+    if (next.size === leaving.size && [...next].every((k) => leaving.has(k))) return items;
     leaving = next;
   }
 }
@@ -41,6 +41,7 @@ export function planRename(input: PlanInput): PlanItem[] {
 function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
   const { destination: dest, conflict, existing } = input;
   const used = new Set<string>();
+  const sources = new Set(input.files.map(pathKey));
 
   /** Gives `source` the first free name of `base`, `base (1)`, `base (2)`… in its target folder. */
   const place = (source: string, base: string, status: Status): PlanItem => {
@@ -59,7 +60,8 @@ function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
       }
       const self = key === pathKey(source);
       const taken = !self && existing.has(key) && !leaving.has(key);
-      if (taken && conflict === 'add') continue;
+      // Copy mode runs in list order: a listed source may still be read later, so it is numbered, never replaced.
+      if (taken && (conflict === 'add' || (conflict === 'replace' && dest.mode === 'copy' && sources.has(key)))) continue;
       if (taken && conflict === 'skip') return item(source, 'skipped', { name, detail: `${name} already exists.` });
       used.add(key);
       if (self && (dest.mode === 'copy' || splitPath(source).name === name)) return item(source, 'unchanged', { name });
@@ -84,7 +86,9 @@ function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
     if (out.has(f)) continue;
     const v = input.values[f];
     const pdf = input.pairs?.[f];
-    const pdfName = pdf ? out.get(pdf)?.name : undefined;
+    const p = pdf ? out.get(pdf) : undefined;
+    // A PDF that is skipped (or waiting for a folder) gives no final name to follow.
+    const pdfName = p && (p.op || p.status === 'unchanged') ? p.name : undefined;
     if (!input.pairEnabled) out.set(f, item(f, 'unchanged', { detail: 'Pairing with PDFs is off.' }));
     else if (v && !v.ok) out.set(f, item(f, 'attention', { reason: v.reason, detail: v.detail }));
     else if (!input.pairs) out.set(f, item(f, 'pending', { detail: 'Waiting for the PDFs…' }));

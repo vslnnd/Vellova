@@ -106,6 +106,23 @@ describe('planRename', () => {
     expect(plan({ files: [A, X], values, pairs: { [X]: A }, skipped: new Set([A]) }).map((i) => i.status)).toEqual(['skipped', 'skipped']);
   });
 
+  it('a companion does not follow a PDF skipped by the Skip conflict rule', () => {
+    const X = 'C:\\in\\x.xlsx';
+    const items = plan({ files: [A, X], values: { [A]: ok('DN-17') }, pairs: { [X]: A }, conflict: 'skip', existing: new Set(['c:\\in\\a.pdf', 'c:\\in\\x.xlsx', 'c:\\in\\dn-17.pdf']) });
+    expect(items.map((i) => [i.status, i.op])).toEqual([['skipped', null], ['skipped', null]]);
+  });
+
+  it('copy mode with Replace never overwrites a listed source that a later copy still reads', () => {
+    const items = plan({
+      files: [A, B], values: { [A]: ok('b'), [B]: ok('z') }, destination: { mode: 'copy', folder: 'C:\\in' },
+      conflict: 'replace', existing: new Set(['c:\\in\\a.pdf', 'c:\\in\\b.pdf']),
+    });
+    expect(items.map((i) => i.op)).toEqual([
+      { kind: 'copy', from: A, to: 'C:\\in\\b (1).pdf' },
+      { kind: 'copy', from: B, to: 'C:\\in\\z.pdf' },
+    ]);
+  });
+
   it('summary counts what will happen', () => {
     const items = plan({ files: [A, B, C], values: { [A]: ok('1'), [B]: ok('2'), [C]: { ok: false, reason: 'no-value', detail: '' } } });
     expect(summary(items, { mode: 'inplace' })).toEqual({ ops: 2, attention: 1, pending: 0, label: 'Rename 2 files' });
