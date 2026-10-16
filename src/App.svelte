@@ -1,6 +1,10 @@
 <script lang="ts">
   import { PANEL_TITLES, ui } from './lib/app.svelte';
   import { undoLast } from './lib/shared/batches';
+  import History from './lib/panels/History.svelte';
+  import NeedsAttention from './lib/panels/NeedsAttention.svelte';
+  import Profiles from './lib/panels/Profiles.svelte';
+  import Settings from './lib/panels/Settings.svelte';
   import Welcome from './lib/panels/Welcome.svelte';
   import { data, save } from './lib/shared/state.svelte';
   import Rename from './lib/rename/Rename.svelte';
@@ -47,7 +51,11 @@
   </main>
   {#if ui.panel}
     <Panel title={PANEL_TITLES[ui.panel]} onclose={closePanel}>
-      {#if ui.panel === 'welcome'}<Welcome onclose={closePanel} />{:else}<p class="hint">{PANEL_TITLES[ui.panel]}</p>{/if}
+      {#if ui.panel === 'history'}<History />
+      {:else if ui.panel === 'profiles'}<Profiles />
+      {:else if ui.panel === 'settings'}<Settings />
+      {:else if ui.panel === 'attention'}<NeedsAttention />
+      {:else}<Welcome onclose={closePanel} />{/if}
     </Panel>
   {/if}
 </div>
