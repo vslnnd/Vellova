@@ -60,8 +60,9 @@ export function mapSettings(v: unknown): Partial<Settings> {
   const s = obj(v);
   const out: Partial<Settings> = {};
   if (s.theme === 'light' || s.theme === 'dark') out.theme = s.theme;
-  if (typeof s.checkOnStartup === 'boolean' || s.checkInterval in HOURS) {
-    out.updates = { onStartup: s.checkOnStartup !== false, everyHours: HOURS[s.checkInterval] ?? 1 };
+  const known = typeof s.checkInterval === 'string' && Object.hasOwn(HOURS, s.checkInterval);
+  if (typeof s.checkOnStartup === 'boolean' || known) {
+    out.updates = { onStartup: s.checkOnStartup !== false, everyHours: known ? HOURS[s.checkInterval] : 1 };
   }
   return out;
 }
@@ -89,10 +90,31 @@ export function mergeImport(current: { profiles: RenameProfile[]; history: Batch
   };
 }
 
+const validStep = (st: unknown) => {
+  const x = obj(st);
+  if (x.type === 'pdfValue') return typeof x.keyword === 'string' && POSITIONS.includes(x.position) && Number.isInteger(x.occurrence);
+  return x.type === 'addText' && typeof x.prefix === 'string' && typeof x.suffix === 'string';
+};
+
+/** One profile from a Vellova export: bad steps drop the profile, missing options get defaults. */
+function ownProfile(p: Record<string, any>): RenameProfile | null { // eslint-disable-line @typescript-eslint/no-explicit-any
+  if (!str(p.id) || !str(p.name) || !Array.isArray(p.steps) || !p.steps.every(validStep)) return null;
+  const d = obj(p.destination);
+  return {
+    id: p.id,
+    name: p.name,
+    desc: str(p.desc),
+    steps: p.steps,
+    pair: typeof p.pair === 'boolean' ? p.pair : true,
+    destination: d.mode === 'copy' && str(d.folder) ? { mode: 'copy', folder: d.folder } : { mode: 'inplace' },
+    conflict: p.conflict === 'skip' || p.conflict === 'replace' ? p.conflict : 'add',
+  };
+}
+
 /** A profiles file chosen in Profiles › Import: Vellova's own export, or the previous app's profiles file. */
 export function importProfiles(text: string): RenameProfile[] {
   const v = parse(text);
   const items = Array.isArray(v) ? v : obj(v).rename;
-  const ours = list(items).filter((p) => Array.isArray(p.steps) && str(p.name) && str(p.id));
-  return ours.length ? (ours as RenameProfile[]) : mapProfiles(items);
+  const ours = list(items).map(ownProfile).filter((p): p is RenameProfile => !!p);
+  return ours.length ? ours : Array.isArray(v) ? mapProfiles(items) : [];
 }

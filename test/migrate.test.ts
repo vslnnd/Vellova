@@ -8,8 +8,8 @@ const PROFILES = [
 ];
 const HISTORY = [
   {
-    id: 'h_1', timestamp: '2026-10-01T08:00:00.000Z', profileName: 'Debit notes', totalRenamed: 2, outputDir: 'C:\in',
-    files: [{ name: 'DN-1.pdf', path: 'C:\in\DN-1.pdf' }, { name: 'DN-1.xlsx', path: 'C:\in\DN-1.xlsx' }],
+    id: 'h_1', timestamp: '2026-10-01T08:00:00.000Z', profileName: 'Debit notes', totalRenamed: 2, outputDir: 'C:\\in',
+    files: [{ name: 'DN-1.pdf', path: 'C:\\in\\DN-1.pdf' }, { name: 'DN-1.xlsx', path: 'C:\\in\\DN-1.xlsx' }],
   },
   { id: 'h_2', timestamp: '2026-10-02T08:00:00.000Z', profileName: '—', files: [], totalRenamed: 0 },
 ];
@@ -36,7 +36,7 @@ describe('importing the previous rename app', () => {
       ['nomina-old-1700000000000', '1 file renamed', false],
     ]);
     expect(h[1]).toMatchObject({ tool: 'rename', profile: 'Debit notes', time: Date.parse('2026-10-01T08:00:00.000Z') });
-    expect(h[1].items[0]).toEqual({ from: '', to: 'C:\in\DN-1.pdf', ok: true });
+    expect(h[1].items[0]).toEqual({ from: '', to: 'C:\\in\\DN-1.pdf', ok: true });
     expect(h[0].profile).toBeUndefined();
     expect(h[2].items).toEqual([{ from: 'scan.pdf', to: 'A.pdf', ok: true }]);
   });
@@ -46,6 +46,29 @@ describe('importing the previous rename app', () => {
     expect(mapSettings({ checkInterval: '6h' }).updates).toEqual({ onStartup: true, everyHours: 6 });
     expect(mapSettings({ checkInterval: 'daily' }).updates?.everyHours).toBe(24);
     expect(mapSettings({ theme: 'purple' })).toEqual({});
+  });
+
+  it('inherited property names are not update intervals', () => {
+    for (const k of ['constructor', 'toString', '__proto__', 'weekly']) {
+      expect(mapSettings({ checkInterval: k }).updates).toBeUndefined();
+      expect(mapSettings({ checkOnStartup: true, checkInterval: k }).updates).toEqual({ onStartup: true, everyHours: 1 });
+    }
+  });
+
+  it('hostile Vellova profile files drop bad profiles and fill defaults', () => {
+    const good = { id: 'a', name: 'A', desc: '', steps: [{ type: 'pdfValue', keyword: 'K', position: 'after', occurrence: 1 }, { type: 'addText', prefix: '', suffix: '' }], pair: true, destination: { mode: 'inplace' }, conflict: 'add' };
+    const hostile = [
+      { ...good, id: 'b', steps: [null] },
+      { ...good, id: 'c', steps: [{ type: 'run', keyword: 'x' }] },
+      { ...good, id: 'd', steps: [{ type: 'pdfValue', keyword: 5, position: 'after', occurrence: 1 }] },
+      { ...good, id: 'e', steps: [{ type: 'pdfValue', keyword: 'K', position: 'left', occurrence: 1 }] },
+      { id: 'f', name: 'F', steps: [{ type: 'addText', prefix: 'x', suffix: '' }] },
+      { ...good, id: 'g', pair: 'yes', destination: { mode: 'copy' }, conflict: 'nuke' },
+    ];
+    const out = importProfiles(JSON.stringify({ rename: [good, ...hostile] }));
+    expect(out.map((p) => p.id)).toEqual(['a', 'f', 'g']);
+    expect(out[1]).toMatchObject({ desc: '', pair: true, destination: { mode: 'inplace' }, conflict: 'add' });
+    expect(out[2]).toMatchObject({ pair: true, destination: { mode: 'inplace' }, conflict: 'add' });
   });
 
   it('missing or corrupt files import nothing', () => {

@@ -1,10 +1,12 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { findOldData, importOldData } from '../migrate/run';
 
   let { onclose }: { onclose: () => void } = $props();
   let found = $state(false);
   let busy = $state(false);
   let result = $state('');
+  let start = $state<HTMLButtonElement>();
 
   $effect(() => {
     findOldData().then((f) => (found = f), () => (found = false));
@@ -14,6 +16,8 @@
     busy = true;
     result = await importOldData(true).catch((e) => `The import failed: ${e}`);
     busy = false;
+    await tick();
+    start?.focus(); // the Import button is gone: keep focus inside the panel
   }
 </script>
 
@@ -35,4 +39,4 @@
   </div>
 {/if}
 
-<div class="row"><button class="btn primary" onclick={onclose}>Get started</button></div>
+<div class="row"><button class="btn primary" bind:this={start} onclick={onclose}>Get started</button></div>
