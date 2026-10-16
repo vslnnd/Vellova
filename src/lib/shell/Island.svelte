@@ -138,6 +138,7 @@
     position: relative; height: 44px; border-radius: 999px; background: var(--cap); border: 1px solid var(--border);
     box-shadow: var(--shadow); overflow: hidden; transition: width 440ms var(--spring);
   }
+  .island :focus-visible { outline-offset: -2px; }
   .island.attn { animation: shake 460ms cubic-bezier(0.36, 0.07, 0.19, 0.97) 1, glow 1.3s ease-in-out 460ms 3; }
   .island.okpulse { animation: okring 900ms ease-out 1; }
 
