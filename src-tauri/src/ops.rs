@@ -49,8 +49,8 @@ pub enum Entry {
     Trash { path: String },
     /// `tmp` was put back at `to` after a failure or a crash.
     Restored { tmp: String, to: String },
-    /// The run (or a recovery) finished with nothing left half-way: recovery skips the journal while this is
-    /// its last line. Undo reads it as usual.
+    /// Everything journaled so far is settled: nothing is left half-way, by this run or an earlier one.
+    /// Recovery reads only what comes after the last one. Undo reads it as usual.
     Done,
 }
 
@@ -138,6 +138,12 @@ fn s(p: &Path) -> String {
 
 fn exists(p: &Path) -> bool {
     fs::symlink_metadata(p).is_ok()
+}
+
+/// Nothing is left at the temporary name `tmp`, seen for sure: its folder is there and the file is not.
+/// A volume that went away (share dropped, USB unplugged) hides both, which proves nothing.
+fn cleared(tmp: &Path) -> bool {
+    !exists(tmp) && tmp.parent().is_some_and(exists)
 }
 
 pub fn mtime_ms(md: &fs::Metadata) -> u64 {
@@ -297,8 +303,9 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
     // Phase 1: every rename source steps aside to a temporary name next to it, journaled first (no line, no
     // move). Its target is cleared only then, so a source that can't move never costs the file it would replace.
     let mut staged: Vec<(usize, PathBuf, bool)> = Vec::new();
-    // false once a file is left under a temporary name, or a binned target could not come back
-    let mut clean = true;
+    // false once a file may be left under a temporary name, or a binned target could not come back; and from
+    // the start when an earlier run in this journal left work for recovery, which a Done would hide
+    let mut clean = read_journal(ctx.journal).is_ok_and(|e| e.last().is_none_or(|l| matches!(l, Entry::Done)));
     for (i, op) in ops.iter().enumerate().filter(|(_, o)| o.kind == Kind::Rename) {
         if stop() {
             report(&mut out, cancelled(i));
@@ -308,13 +315,14 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
         let aside = j.add(&Entry::Temp { from: op.from.clone(), tmp: s(&tmp), to: op.to.clone() });
         if let Err(e) = aside.and_then(|_| fs::rename(&op.from, &tmp)) {
             report(&mut out, fail(i, &e));
+            clean &= cleared(&tmp);
             continue;
         }
         match clear_target(&mut j, ctx.bin, op, Path::new(&op.to), &leaving) {
             Ok(trashed) => staged.push((i, tmp, trashed)),
             Err(e) => {
                 report(&mut out, step_back(&mut j, i, &e, &tmp, &op.from));
-                clean &= !exists(&tmp);
+                clean &= cleared(&tmp);
             }
         }
     }
@@ -354,7 +362,7 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
             Err(e) => {
                 let r = step_back(&mut j, i, &e, &tmp, &op.from);
                 report(&mut out, if trashed { unbin(ctx.bin, r, &op.to) } else { r });
-                clean &= !exists(&tmp) && (!trashed || exists(to));
+                clean &= cleared(&tmp) && (!trashed || exists(to));
             }
         }
     }
@@ -403,12 +411,14 @@ fn arrived(j: &mut Journal, from: &str, tmp: &str, to: &str) -> io::Result<()> {
 /// again, and a file sent to the Recycle Bin for a replace that never happened comes back. What can't be
 /// repaired is reported with the path where the file is.
 pub fn recover(journal: &Path, bin: &dyn Bin) -> io::Result<UndoReport> {
-    let entries = match read_journal(journal) {
+    let all = match read_journal(journal) {
         Ok(e) => e,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(UndoReport::default()),
         Err(e) => return Err(e),
     };
-    if matches!(entries.last(), Some(Entry::Done)) {
+    // A Done means nothing before it was left half-way: only the runs after the last one need looking at.
+    let entries = &all[all.iter().rposition(|e| matches!(e, Entry::Done)).map_or(0, |i| i + 1)..];
+    if entries.is_empty() {
         return Ok(UndoReport::default());
     }
     let settled: HashSet<&str> = entries
@@ -418,15 +428,25 @@ pub fn recover(journal: &Path, bin: &dyn Bin) -> io::Result<UndoReport> {
             _ => None,
         })
         .collect();
-    let mut left: Vec<(&String, &String, &String)> = entries
-        .iter()
-        .filter_map(|e| match e {
-            Entry::Temp { from, tmp, to } if !settled.contains(tmp.as_str()) && exists(Path::new(tmp)) => Some((from, tmp, to)),
-            _ => None,
-        })
-        .collect();
-    let mut j = Journal::open(journal)?;
     let mut rep = UndoReport::default();
+    let mut stranded = false;
+    let mut left: Vec<(&String, &String, &String)> = Vec::new();
+    for e in entries {
+        if let Entry::Temp { from, tmp, to } = e {
+            if settled.contains(tmp.as_str()) || cleared(Path::new(tmp)) {
+                continue;
+            }
+            if exists(Path::new(tmp)) {
+                left.push((from, tmp, to));
+            } else {
+                // its folder can't be seen (volume away): the journal stays open for the next start
+                let reason = "left under a temporary name in a folder that can't be reached now".into();
+                rep.skipped.push(Skipped { path: tmp.clone(), reason });
+                stranded = true;
+            }
+        }
+    }
+    let mut j = Journal::open(journal)?;
     let unjournaled = |rep: &mut UndoReport, to: &str, e: io::Error| {
         rep.skipped.push(Skipped { path: to.into(), reason: format!("got its new name, but Undo can't reverse it: {e}") });
     };
@@ -465,7 +485,6 @@ pub fn recover(journal: &Path, bin: &dyn Bin) -> io::Result<UndoReport> {
             _ => None,
         })
         .collect();
-    let mut stranded = false;
     for (from, tmp, to) in left {
         if move_free(Path::new(tmp), from) {
             let _ = j.add(&Entry::Restored { tmp: tmp.clone(), to: from.clone() });
@@ -486,7 +505,7 @@ pub fn recover(journal: &Path, bin: &dyn Bin) -> io::Result<UndoReport> {
     // The replace of a file that went back never happened: what it had sent to the Recycle Bin comes back.
     // An item no longer in the bin is reported this once; any other failure is retried on the next run.
     let mut pending = false;
-    for e in &entries {
+    for e in entries {
         if let Entry::Trash { path } = e {
             if back.contains(&key(path)) && !exists(Path::new(path)) {
                 if let Err(err) = bin.restore(Path::new(path), None) {
@@ -1060,6 +1079,69 @@ mod tests {
         assert!(matches!(read_journal(&t.journal()).unwrap().last(), Some(Entry::Done)));
         let again = recover(&t.journal(), &t.bin).unwrap();
         assert_eq!((again.restored, again.skipped), (0, vec![]));
+    }
+
+    #[test]
+    fn a_clean_run_does_not_hide_a_file_an_earlier_run_left_stranded() {
+        // Run 1 left a under a temporary name (a and x both taken since); then "Apply fixes" runs cleanly.
+        let t = T::new();
+        let (a, x, b) = (t.write("a.pdf", "NEW A"), t.write("x.pdf", "X"), t.write("b.pdf", "B"));
+        let tmp = t.write(".~vellova-b1-1-0.tmp", "A");
+        Journal::open(&t.journal()).unwrap().add(&Entry::Temp { from: a, tmp: tmp.clone(), to: x }).unwrap();
+        assert!(t.apply(&[rn(&b, &t.p("y.pdf"))])[0].ok);
+        let rep = recover(&t.journal(), &t.bin).unwrap();
+        assert_eq!(rep.skipped.iter().map(|s| s.path.clone()).collect::<Vec<_>>(), [tmp]);
+    }
+
+    #[test]
+    fn a_step_back_lost_with_its_volume_keeps_the_journal_open() {
+        // The folder vanishes (share dropped, USB unplugged) while the target goes to the bin.
+        let t = T::new();
+        let (sub, gone) = (t.root.join("sub"), t.root.join("sub-away"));
+        fs::create_dir(&sub).unwrap();
+        let (a, x) = (t.write("sub/a.pdf", "A"), t.write("sub/x.pdf", "OLD"));
+        let bin = HookBin(&t.bin, |_: &Path| fs::rename(&sub, &gone).unwrap());
+        let mut op = rn(&a, &x);
+        op.replace = true;
+        assert!(!t.apply_with(&bin, &[op])[0].ok);
+        fs::rename(&gone, &sub).unwrap(); // the volume is back
+        assert_eq!(recover(&t.journal(), &t.bin).unwrap().restored, 1);
+        assert_eq!((t.read("sub/a.pdf"), t.read("sub/x.pdf")), ("A".into(), "OLD".into()));
+    }
+
+    #[test]
+    fn recovery_keeps_a_file_it_cannot_see_for_later() {
+        let t = T::new();
+        let (sub, gone) = (t.root.join("sub"), t.root.join("sub-away"));
+        fs::create_dir(&sub).unwrap();
+        let a = t.p("sub/a.pdf");
+        let tmp = t.write("sub/.~vellova-b1-1-0.tmp", "A");
+        Journal::open(&t.journal()).unwrap().add(&Entry::Temp { from: a, tmp, to: t.p("sub/x.pdf") }).unwrap();
+        fs::rename(&sub, &gone).unwrap(); // the volume is away at startup
+        let rep = recover(&t.journal(), &t.bin).unwrap();
+        assert_eq!((rep.restored, rep.skipped.len()), (0, 1));
+        fs::rename(&gone, &sub).unwrap();
+        assert_eq!(recover(&t.journal(), &t.bin).unwrap().restored, 1);
+        assert_eq!(t.read("sub/a.pdf"), "A");
+    }
+
+    #[test]
+    fn recovery_ignores_what_a_finished_run_put_right() {
+        // Run 1 put x back after a failed replace and finished. The user deleted x since. A later run crashed.
+        let t = T::new();
+        let (a, x, b) = (t.write("a.pdf", "A"), t.write("x.pdf", "OLD"), t.p("b.pdf"));
+        t.bin.trash(Path::new(&x)).unwrap();
+        let (t0, t1) = (t.p(".~vellova-b1-1-0.tmp"), t.write(".~vellova-b1-2-0.tmp", "B"));
+        {
+            let mut j = Journal::open(&t.journal()).unwrap();
+            j.add(&Entry::Temp { from: a.clone(), tmp: t0.clone(), to: x.clone() }).unwrap();
+            j.add(&Entry::Trash { path: x }).unwrap();
+            j.add(&Entry::Restored { tmp: t0, to: a }).unwrap();
+            j.add(&Entry::Done).unwrap();
+            j.add(&Entry::Temp { from: b, tmp: t1, to: t.p("y.pdf") }).unwrap();
+        }
+        assert_eq!(recover(&t.journal(), &t.bin).unwrap().restored, 1);
+        assert_eq!(t.names(), ["a.pdf", "b.pdf"]);
     }
 
     #[cfg(windows)]
