@@ -312,14 +312,19 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
             continue;
         }
         let tmp = Path::new(&op.from).with_file_name(format!(".~vellova-{tag}-{stamp}-{i}.tmp"));
-        // A failure here moved nothing (no line, or the rename did not happen): settled, whatever `tmp` looks
-        // like now. Its folder may even be gone (a stale plan), which `cleared` can't tell from a lost volume.
+        // A failure here moved nothing (no line, or the rename did not happen): settled. Its folder may even be
+        // gone (a stale plan), which `cleared` can't tell from a lost volume. Unless `tmp` exists after all
+        // (a share that renamed but lost the reply): then it is left for recovery.
         if let Err(e) = j.add(&Entry::Temp { from: op.from.clone(), tmp: s(&tmp), to: op.to.clone() }) {
             report(&mut out, fail(i, &e));
             continue;
         }
         if let Err(e) = fs::rename(&op.from, &tmp) {
-            let _ = j.add(&Entry::Restored { tmp: s(&tmp), to: op.from.clone() }); // so recovery skips it too
+            if tmp.exists() {
+                clean = false;
+            } else {
+                let _ = j.add(&Entry::Restored { tmp: s(&tmp), to: op.from.clone() }); // so recovery skips it too
+            }
             report(&mut out, fail(i, &e));
             continue;
         }
