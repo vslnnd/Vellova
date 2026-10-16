@@ -37,7 +37,8 @@ export type RenameProfile = {
   conflict: Conflict;
 };
 
-export type BatchItem = { from: string; to: string; ok: boolean; reason?: Reason };
+/** `pending`: recorded before the batch ran and no result came back yet (the app stopped mid-batch). */
+export type BatchItem = { from: string; to: string; ok: boolean; reason?: Reason; pending?: boolean };
 
 export type Batch = {
   id: string;

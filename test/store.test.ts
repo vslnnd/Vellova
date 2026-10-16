@@ -95,6 +95,11 @@ describe('history', () => {
     expect(h[0].summary).toBe('1 file renamed · 1 failed');
   });
 
+  it('counts items recorded before the batch ran, with no result yet, as unfinished', () => {
+    const h = mergeBatch([], batch('b1', [{ from: 'a', to: 'A', ok: true }, { from: 'b', to: 'B', ok: false, pending: true }]));
+    expect(h[0].summary).toBe('1 file renamed · 1 unfinished');
+  });
+
   it('merges fixes into the same batch, later results win', () => {
     let h = mergeBatch([], batch('b1', [{ from: 'b', to: 'B', ok: false, reason: 'locked' }], { undoable: false }));
     h = mergeBatch(mergeBatch(h, batch('b0', [])), batch('b1', [{ from: 'b', to: 'B', ok: true }]));

@@ -1,5 +1,6 @@
 import { extOf, join, sanitize, splitExt, splitPath } from '../../shared/names';
-import type { Conflict, Destination, Op, PlanItem, Reason, Status } from '../../shared/types';
+import type { OpResult } from '../../shared/ipc';
+import type { BatchItem, Conflict, Destination, Op, PlanItem, Reason, Status } from '../../shared/types';
 import { PDF, pathKey } from './files';
 
 export type ValueResult = { ok: true; value: string } | { ok: false; reason: Reason; detail: string };
@@ -109,4 +110,36 @@ export function summary(items: PlanItem[], destination: Destination) {
     pending: items.filter((i) => i.status === 'pending').length,
     label: `${verb} ${ops} ${ops === 1 ? 'file' : 'files'}`,
   };
+}
+
+/** ops.rs: the file reached its new name, but its journal line could not be written, so Undo can't reverse it. */
+const movedUnjournaled = (r?: OpResult) => !!r && !r.ok && r.code === 'internal' && /can't be undone/.test(r.message ?? '');
+
+/**
+ * Matches apply results to the items that ran. Cancelled items are neither done nor failed, so they stay listed.
+ * A file that moved without a journal line is done (ok, with reason `internal`) and listed in `warned`.
+ */
+export function readResults(items: PlanItem[], results: OpResult[]) {
+  const byIndex = new Map(results.map((r) => [r.i, r]));
+  const batch: BatchItem[] = [];
+  const failed: { source: string; reason: Reason; message: string }[] = [];
+  const warned: { source: string; message: string }[] = [];
+  items.forEach((it, i) => {
+    const r = byIndex.get(i);
+    if (r?.code === 'cancelled') return;
+    const to = it.op!.to;
+    if (r?.ok) {
+      batch.push({ from: it.source, to, ok: true });
+      return;
+    }
+    if (movedUnjournaled(r)) {
+      batch.push({ from: it.source, to, ok: true, reason: 'internal' });
+      warned.push({ source: it.source, message: r!.message! });
+      return;
+    }
+    const reason = (r?.code ?? 'internal') as Reason;
+    batch.push({ from: it.source, to, ok: false, reason });
+    failed.push({ source: it.source, reason, message: r?.message ?? 'No result came back for this file.' });
+  });
+  return { batch, failed, warned, done: batch.filter((b) => b.ok).map((b) => b.from) };
 }

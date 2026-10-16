@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mergeFiles } from '../src/lib/rename/engine/files';
-import { planRename, summary, type PlanInput, type ValueResult } from '../src/lib/rename/engine/planner';
+import { planRename, readResults, summary, type PlanInput, type ValueResult } from '../src/lib/rename/engine/planner';
 import { DEFAULT_RULES, profileFromRules, rulesFromProfile, type RenameRules } from '../src/lib/rename/engine/profile';
 import type { PlanItem } from '../src/lib/shared/types';
 
@@ -161,5 +161,38 @@ describe('profiles', () => {
 
   it('a profile without steps gives the defaults', () => {
     expect(rulesFromProfile({ id: 'x', name: 'x', desc: '', steps: [], pair: true, destination: { mode: 'inplace' }, conflict: 'add' })).toEqual(DEFAULT_RULES);
+  });
+});
+
+describe('readResults', () => {
+  it('failures keep their reason, cancelled files stay untouched, a missing result is internal', () => {
+    const D = 'C:\in\d.pdf';
+    const items: PlanItem[] = [A, B, C, D].map((source, n) => ({
+      id: source, source, status: 'ready' as const, op: { kind: 'rename' as const, from: source, to: `C:\in\N${n}.pdf` },
+    }));
+    const r = readResults(items, [
+      { i: 1, ok: false, code: 'locked', message: 'os error 32' },
+      { i: 0, ok: true },
+      { i: 2, ok: false, code: 'cancelled' },
+    ]);
+    expect(r.done).toEqual([A]);
+    expect(r.batch).toEqual([
+      { from: A, to: 'C:\in\N0.pdf', ok: true },
+      { from: B, to: 'C:\in\N1.pdf', ok: false, reason: 'locked' },
+      { from: D, to: 'C:\in\N3.pdf', ok: false, reason: 'internal' },
+    ]);
+    expect(r.failed.map((f) => [f.source, f.reason, f.message])).toEqual([
+      [B, 'locked', 'os error 32'],
+      [D, 'internal', 'No result came back for this file.'],
+    ]);
+  });
+
+  it('a file that moved but could not be journaled counts as done, with a warning', () => {
+    const items: PlanItem[] = [{ id: A, source: A, status: 'ready', op: { kind: 'rename', from: A, to: 'C:\in\N.pdf' } }];
+    const r = readResults(items, [{ i: 0, ok: false, code: 'internal', message: "done, but it can't be undone: disk full" }]);
+    expect(r.done).toEqual([A]);
+    expect(r.failed).toEqual([]);
+    expect(r.batch).toEqual([{ from: A, to: 'C:\in\N.pdf', ok: true, reason: 'internal' }]);
+    expect(r.warned).toEqual([{ source: A, message: "done, but it can't be undone: disk full" }]);
   });
 });

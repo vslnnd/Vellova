@@ -1,7 +1,8 @@
 <script lang="ts">
   import { PANEL_TITLES, ui } from './lib/app.svelte';
   import { undoLast } from './lib/shared/batches';
-  import { ipc } from './lib/shared/ipc';
+  import Rename from './lib/rename/Rename.svelte';
+  import { cancelActivity } from './lib/rename/session.svelte';
   import Panel from './lib/shell/Panel.svelte';
   import { shortcut } from './lib/shell/shortcuts';
   import TitleBar from './lib/shell/TitleBar.svelte';
@@ -23,10 +24,10 @@
 <svelte:window {onkeydown} />
 
 <div class="app">
-  <TitleBar oncancel={() => void ipc.cancelApply()} onundo={() => void undoLast()} onrestart={() => {}} />
+  <TitleBar oncancel={cancelActivity} onundo={() => void undoLast()} onrestart={() => {}} />
   <main inert={!!ui.panel}>
     <div class="screen" class:on={ui.tool === 'rename'} inert={ui.tool !== 'rename'}>
-      <h1>Rename</h1>
+      <Rename />
     </div>
     <div class="screen" class:on={ui.tool === 'split'} inert={ui.tool !== 'split'}>
       <Split />

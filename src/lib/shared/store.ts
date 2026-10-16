@@ -87,8 +87,9 @@ export const capHistory = (h: Batch[]) => h.slice(0, HISTORY_MAX);
 
 export function batchSummary(b: Batch): string {
   const ok = b.items.filter((i) => i.ok).length;
-  const failed = b.items.length - ok;
-  return `${ok} ${ok === 1 ? 'file' : 'files'} ${b.verb}${failed ? ` · ${failed} failed` : ''}`;
+  const pending = b.items.filter((i) => i.pending).length;
+  const failed = b.items.length - ok - pending;
+  return `${ok} ${ok === 1 ? 'file' : 'files'} ${b.verb}${failed ? ` · ${failed} failed` : ''}${pending ? ` · ${pending} unfinished` : ''}`;
 }
 
 /** Puts `b` on top of the history. A batch with the same id (Apply fixes) is merged: later results win per source. */
