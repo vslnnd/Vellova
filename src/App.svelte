@@ -13,8 +13,10 @@
   import { shortcut } from './lib/shell/shortcuts';
   import TitleBar from './lib/shell/TitleBar.svelte';
   import Split from './lib/split/Split.svelte';
+  import { restartToUpdate, scheduleUpdates } from './lib/updater';
 
   if (!data.settings.welcomed) ui.panel = 'welcome';
+  if (import.meta.env.PROD) scheduleUpdates(true);
 
   function closePanel() {
     if (ui.panel === 'welcome') {
@@ -40,7 +42,7 @@
 <svelte:window {onkeydown} />
 
 <div class="app">
-  <TitleBar oncancel={cancelActivity} onundo={() => void undoLast()} onrestart={() => {}} />
+  <TitleBar oncancel={cancelActivity} onundo={() => void undoLast()} onrestart={() => void restartToUpdate()} />
   <main inert={!!ui.panel}>
     <div class="screen" class:on={ui.tool === 'rename'} inert={ui.tool !== 'rename'}>
       <Rename />

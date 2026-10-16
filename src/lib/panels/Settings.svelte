@@ -6,6 +6,7 @@
   import { findOldData, importOldData } from '../migrate/run';
   import { data, save } from '../shared/state.svelte';
   import { switchTheme, type ThemePref } from '../shell/theme';
+  import { checkForUpdate, scheduleUpdates } from '../updater';
 
   const THEMES: [ThemePref, string][] = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']];
   const EVERY: [number, string][] = [[1, 'every hour'], [6, 'every 6 hours'], [24, 'once a day'], [0, 'never']];
@@ -13,6 +14,8 @@
   let old = $state(false);
   let busy = $state(false);
   let imported = $state('');
+  let checking = $state(false);
+  let updateText = $state('');
 
   $effect(() => {
     getVersion().then((v) => (version = v), () => {});
@@ -27,7 +30,15 @@
       flushSync();
     }, el);
   }
-  const updatesChanged = () => save('settings');
+  function updatesChanged() {
+    save('settings');
+    scheduleUpdates(false);
+  }
+  async function checkNow() {
+    checking = true;
+    updateText = await checkForUpdate(true);
+    checking = false;
+  }
   async function bring() {
     busy = true;
     imported = await importOldData(false).catch((e) => `The import failed: ${String(e).replace(/^[a-z]+: /, "")}`);
@@ -53,6 +64,10 @@
       {#each EVERY as [v, label] (v)}<option value={v}>{label}</option>{/each}
     </select>
   </label>
+  <div class="row">
+    <button class="btn small" disabled={checking} onclick={() => void checkNow()}>{checking ? 'Checking…' : 'Check now'}</button>
+    {#if updateText}<span class="hint" role="status">{updateText}</span>{/if}
+  </div>
 </section>
 
 <section class="card">
