@@ -1,7 +1,50 @@
 <script lang="ts">
-  import Island from './lib/shell/Island.svelte';
+  import { PANEL_TITLES, ui } from './lib/app.svelte';
+  import { undoLast } from './lib/shared/batches';
+  import { ipc } from './lib/shared/ipc';
+  import Panel from './lib/shell/Panel.svelte';
+  import { shortcut } from './lib/shell/shortcuts';
+  import TitleBar from './lib/shell/TitleBar.svelte';
+  import Split from './lib/split/Split.svelte';
+
+  const inText = () => !!document.activeElement?.matches('input:not([type=checkbox]):not([type=radio]), textarea, select');
+
+  function onkeydown(e: KeyboardEvent) {
+    const action = shortcut(e, inText());
+    if (!action || (action === 'close-panel' && !ui.panel)) return;
+    e.preventDefault();
+    if (action === 'close-panel') ui.panel = null;
+    else if (action === 'tool-rename') ui.tool = 'rename';
+    else if (action === 'tool-split') ui.tool = 'split';
+    else void undoLast();
+  }
 </script>
 
-<div style="display: grid; place-items: center; height: 60px; background: var(--chrome)">
-  <Island oncancel={() => {}} onundo={() => {}} onrestart={() => {}} />
+<svelte:window {onkeydown} />
+
+<div class="app">
+  <TitleBar oncancel={() => void ipc.cancelApply()} onundo={() => void undoLast()} onrestart={() => {}} />
+  <main inert={!!ui.panel}>
+    <div class="screen" class:on={ui.tool === 'rename'} inert={ui.tool !== 'rename'}>
+      <h1>Rename</h1>
+    </div>
+    <div class="screen" class:on={ui.tool === 'split'} inert={ui.tool !== 'split'}>
+      <Split />
+    </div>
+  </main>
+  {#if ui.panel}
+    <Panel title={PANEL_TITLES[ui.panel]} onclose={() => (ui.panel = null)}>
+      <p class="hint">{PANEL_TITLES[ui.panel]}</p>
+    </Panel>
+  {/if}
 </div>
+
+<style>
+  .app { height: 100%; display: flex; flex-direction: column; }
+  main { position: relative; flex: 1; min-height: 0; }
+  .screen {
+    position: absolute; inset: 0; padding: 20px 24px 0; display: flex; flex-direction: column; opacity: 0; transform: translateY(8px); visibility: hidden;
+    transition: opacity 260ms ease, transform 360ms cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 260ms;
+  }
+  .screen.on { opacity: 1; transform: none; visibility: visible; transition-delay: 0s; }
+</style>
