@@ -1,0 +1,156 @@
+import { ui } from '../app.svelte';
+import { pathKey } from '../rename/engine/files';
+import { DEFAULT_RULES, type RenameRules } from '../rename/engine/profile';
+import { addPaths, clearFiles, session, setAddFilter, whenIdle } from '../rename/session.svelte';
+import { ipc } from '../shared/ipc';
+import { join } from '../shared/names';
+import { data, log, save } from '../shared/state.svelte';
+import type { TourMarker } from '../shared/types';
+import { island, send } from '../shell/islandState.svelte';
+import { inSampleDir, NO_NUMBER, PAIRED, STEPS, tourProfile, withoutTour, type TourView } from './steps';
+
+export const tour = $state({
+  /** index in STEPS while the tour runs; -1 when it doesn't */
+  step: -1,
+  /** a card outside the steps */
+  card: null as 'welcome' | 'resume' | null,
+  /** this run's sample folder */
+  dir: '',
+  /** when the current step began (errors logged after it offer "Skip this step") */
+  since: 0,
+  /** why the samples couldn't be prepared */
+  error: '',
+});
+
+/** What the Rename screen held before the tour, and which profiles already existed. */
+let before: { rules: RenameRules; profileId: string | null; ids: string[] } | null = null;
+
+export const tourActive = () => tour.step >= 0 || tour.card !== null;
+export const current = () => (tour.step >= 0 ? STEPS[tour.step] : undefined);
+/** The island keeps "done · Undo" open while the tour points at it. */
+export const holdDone = () => current()?.id === 'undo';
+
+const inDir = (path: string) => inSampleDir(tour.dir, path);
+
+/** Marks the two sample rows the tour points at. */
+export function tourRow(path: string): string | undefined {
+  if (!tour.dir) return undefined;
+  const k = pathKey(path);
+  if (k === pathKey(join(tour.dir, NO_NUMBER))) return 'name-row';
+  if (k === pathKey(join(tour.dir, PAIRED))) return 'pair-row';
+  return undefined;
+}
+
+export function view(): TourView {
+  const samples = session.files.filter((f) => inDir(f.path));
+  const noNumber = samples.find((f) => tourRow(f.path) === 'name-row');
+  const batch = session.batch;
+  return {
+    samples: samples.length,
+    values: samples.filter((f) => session.values[f.path]?.ok).length,
+    reading: session.loading || session.dirty,
+    named: !!noNumber && !!session.overrides[noNumber.path]?.trim(),
+    batch,
+    busy: session.busy || !!island.activity,
+    undone: !!batch && !!data.history.find((h) => h.id === batch)?.undone,
+    profile: tourProfile(session.profileId, before?.ids ?? []),
+    error: data.log.some((e) => e.t >= tour.since && e.level === 'error'),
+  };
+}
+
+function go(i: number) {
+  tour.step = i;
+  tour.since = Date.now();
+}
+
+/** Opens the tour at its Start card. The Rename screen is cleared; what was on it comes back afterwards. */
+export function startTour() {
+  before = { rules: $state.snapshot(session.rules), profileId: session.profileId, ids: data.profiles.rename.map((p) => p.id) };
+  clearFiles();
+  session.rules = structuredClone(DEFAULT_RULES);
+  session.profileId = null;
+  ui.panel = null;
+  ui.tool = 'rename';
+  tour.card = null;
+  tour.error = '';
+  go(0);
+}
+
+/** The Start card's button: copies the samples, then points at the drop zone. */
+export async function beginSamples() {
+  tour.error = '';
+  try {
+    tour.dir = await ipc.tourPrepare();
+  } catch (e) {
+    tour.error = `The sample files couldn't be prepared: ${String(e).replace(/^[a-z]+: /, '')}`;
+    return;
+  }
+  data.settings.tour = { dir: tour.dir, batch: null, profile: null };
+  save('settings');
+  setAddFilter(inDir);
+  next();
+}
+
+export const addSamples = () => addPaths([tour.dir]);
+
+/** Moves on. What the tour has made so far is written to the marker first. */
+export function next() {
+  const m = data.settings.tour;
+  if (m) {
+    m.batch = session.batch;
+    m.profile = tourProfile(session.profileId, before?.ids ?? []);
+    save('settings');
+  }
+  if (tour.step + 1 < STEPS.length) go(tour.step + 1);
+  else void endTour();
+}
+
+/** Finish or Skip: everything the tour made goes, and the Rename screen is as it was. */
+export async function endTour() {
+  await whenIdle(); // a sample batch still renaming would otherwise come back into History after the cleanup
+  // bring the marker up to date first (clearFiles resets session.batch), so a batch or profile made since the last Next goes too
+  const now = data.settings.tour;
+  if (now) {
+    now.batch = session.batch;
+    now.profile = tourProfile(session.profileId, before?.ids ?? []);
+  }
+  tour.step = -1;
+  tour.card = null;
+  ui.panel = null;
+  setAddFilter(null);
+  clearFiles();
+  if (before) {
+    session.rules = before.rules;
+    session.profileId = before.profileId;
+    before = null;
+  }
+  tour.dir = '';
+  send({ type: 'reset' });
+  const m = data.settings.tour;
+  if (m) await cleanUp(m);
+}
+
+/** Removes the tour's batch, journals, profile and sample folder. The marker stays until all of it is gone. */
+async function cleanUp(m: TourMarker) {
+  const left = withoutTour(data.history, data.profiles.rename, m);
+  data.history = left.history;
+  data.profiles.rename = left.profiles;
+  save('history');
+  save('profiles');
+  try {
+    if (m.batch) await ipc.forgetBatch(m.batch);
+    if (m.dir) await ipc.tourCleanup(m.dir);
+    data.settings.tour = null;
+  } catch (e) {
+    log({ level: 'warn', tool: 'app', message: 'The tour sample files could not all be removed. Vellova tries again at the next start.', detail: String(e) });
+  }
+  save('settings');
+}
+
+/** At start, after recovery: a tour that a closed app left behind is cleaned up, then offered again once. */
+export async function tourOnStart() {
+  const m = data.settings.tour;
+  if (!m) return;
+  await cleanUp(m);
+  if (!data.settings.tour && !tourActive()) tour.card = 'resume';
+}

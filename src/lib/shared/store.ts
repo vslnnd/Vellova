@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updates: { onStartup: true, everyHours: 6 },
   rename: { folder: '', recursive: false },
   welcomed: false,
+  tour: null,
 };
 export const LOG_MAX = 1000;
 export const LOG_DAYS = 30;
@@ -28,6 +29,7 @@ export function withDefaults(v: unknown): Settings {
     ...s,
     updates: { ...DEFAULT_SETTINGS.updates, ...(isObj(s.updates) ? s.updates : {}) },
     rename: { ...DEFAULT_SETTINGS.rename, ...(isObj(s.rename) ? s.rename : {}) },
+    tour: isObj(s.tour) && typeof s.tour.dir === 'string' ? (s.tour as Settings['tour']) : null,
   };
 }
 

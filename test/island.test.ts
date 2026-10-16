@@ -64,4 +64,13 @@ describe('island', () => {
   it('uses the spec timings', () => {
     expect(TIMEOUT_MS).toEqual({ done: 4000, attention: 6000, update: 3500, restored: 2200 });
   });
+
+  it('reset clears the tour batch but keeps a ready update', () => {
+    const s = run(start, { type: 'finish', text: '6 files renamed', attention: 1 }, { type: 'updateReady', version: '0.1.1' });
+    const r = reduce(s, { type: 'reset' });
+    expect(r.done).toBeNull();
+    expect(r.attention).toBe(0);
+    expect(r.update).toBe('0.1.1');
+    expect(layer(r)).toBe('tools');
+  });
 });

@@ -25,7 +25,8 @@ export type IslandEvent =
   | { type: 'updateReady'; version: string }
   | { type: 'restarting' }
   | { type: 'restored'; text: string }
-  | { type: 'clearTransient' };
+  | { type: 'clearTransient' }
+  | { type: 'reset' };
 
 export const INITIAL: IslandState = { activity: null, done: null, attention: 0, update: null, transient: null, open: null };
 
@@ -54,6 +55,8 @@ export function reduce(s: IslandState, e: IslandEvent): IslandState {
       return { ...s, done: null, open: null, transient: { kind: 'restored', text: e.text } };
     case 'clearTransient':
       return { ...s, transient: null };
+    case 'reset':
+      return { ...INITIAL, update: s.update };
   }
 }
 

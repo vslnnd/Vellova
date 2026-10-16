@@ -128,4 +128,11 @@ describe('history', () => {
     expect(lastUndoable(h)?.id).toBe('b1');
     expect(lastUndoable([])).toBeUndefined();
   });
+
+  it('drops a tour marker that is not a well-formed object', () => {
+    expect(withDefaults({ tour: 'C:\\Windows' }).tour).toBeNull();
+    expect(withDefaults({ tour: { dir: 5 } }).tour).toBeNull();
+    expect(withDefaults({ tour: { dir: 'C:\\Temp\\vellova-tour-1', batch: 'b', profile: null } }).tour).toEqual({ dir: 'C:\\Temp\\vellova-tour-1', batch: 'b', profile: null });
+    expect(withDefaults({}).tour).toBeNull();
+  });
 });

@@ -224,9 +224,15 @@ export async function refresh() {
   }
 }
 
+/** While set, only files it accepts can be added (the tour keeps the list to its samples). */
+let addFilter: ((path: string) => boolean) | null = null;
+export const setAddFilter = (f: ((path: string) => boolean) | null) => (addFilter = f);
+
 export async function addPaths(paths: string[]) {
   if (!paths.length) return;
-  session.files = mergeFiles(session.files, await ipc.listFiles(paths, data.settings.rename.recursive));
+  const listed = await ipc.listFiles(paths, data.settings.rename.recursive);
+  const keep = addFilter;
+  session.files = mergeFiles(session.files, keep ? listed.filter((f) => keep(f.path)) : listed);
 }
 
 export async function pickFiles() {

@@ -53,9 +53,13 @@ export type Batch = {
   undone?: boolean;
 };
 
+/** What a running tour has made, kept in settings so a crash mid-tour is cleaned up at the next start. */
+export type TourMarker = { dir: string; batch: string | null; profile: string | null };
+
 export type Settings = {
   theme: 'system' | 'dark' | 'light';
   updates: { onStartup: boolean; everyHours: number };
   rename: { folder: string; recursive: boolean };
   welcomed: boolean;
+  tour: TourMarker | null;
 };
