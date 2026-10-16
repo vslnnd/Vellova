@@ -44,15 +44,24 @@ export async function loadAll() {
   data.loaded = true;
 }
 
+/** The latest write per file, so the next one (and flush) waits for it. */
+const inflight = new Map<Kind, Promise<void>>();
+
 function write(kind: Kind) {
   timers.delete(kind);
-  const text = kind === 'log'
-    ? data.log.map((e) => JSON.stringify(e)).join('\n')
-    : JSON.stringify($state.snapshot(data[kind]), null, 2);
-  return ipc.dataWrite(FILE[kind], text).catch((e) => {
-    console.error(`saving ${FILE[kind]} failed`, e);
-    if (kind !== 'log') log({ level: 'error', tool: 'app', message: `Could not save ${FILE[kind]}`, detail: String(e) });
-  });
+  const run = async () => {
+    const text = kind === 'log'
+      ? data.log.map((e) => JSON.stringify(e)).join('\n')
+      : JSON.stringify($state.snapshot(data[kind]), null, 2);
+    await ipc.dataWrite(FILE[kind], text).catch((e) => {
+      console.error(`saving ${FILE[kind]} failed`, e);
+      if (kind !== 'log') log({ level: 'error', tool: 'app', message: `Could not save ${FILE[kind]}`, detail: String(e) });
+    });
+  };
+  const p = (inflight.get(kind) ?? Promise.resolve()).then(run);
+  inflight.set(kind, p);
+  void p.then(() => { if (inflight.get(kind) === p) inflight.delete(kind); });
+  return p;
 }
 
 /** Saves one data file atomically, 250 ms after the last change. */
@@ -62,9 +71,11 @@ export function save(kind: Kind) {
   timers.set(kind, setTimeout(() => void write(kind), 250));
 }
 
-/** Writes pending saves now (before closing or restarting). */
+/** Writes pending saves now and waits for writes already running (before closing or restarting). */
 export async function flush() {
   const kinds = [...timers.keys()];
   kinds.forEach((k) => clearTimeout(timers.get(k)));
-  await Promise.all(kinds.map(write));
+  kinds.forEach(write);
+  // A failed write can log, which schedules a log save: go round until nothing is left.
+  while (inflight.size) await Promise.all([...inflight.values()]);
 }

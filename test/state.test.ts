@@ -71,6 +71,31 @@ describe('loadAll', () => {
 });
 
 describe('save', () => {
+  it('flush waits for a write already in flight and serialises writes per file', async () => {
+    const s = await load();
+    await s.loadAll();
+    let release!: () => void;
+    let started = 0;
+    m.write.mockImplementation((n: string) => {
+      if (n !== 'settings.json') return Promise.resolve();
+      started++;
+      return started === 1 ? new Promise<void>((r) => (release = r)) : Promise.resolve();
+    });
+    vi.useFakeTimers();
+    s.save('settings');
+    await vi.advanceTimersByTimeAsync(300); // timer fired: first write is now in flight
+    vi.useRealTimers();
+    s.save('settings');
+    let done = false;
+    const f = s.flush().then(() => (done = true));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(done).toBe(false);
+    expect(started).toBe(1); // second write waits for the first
+    release();
+    await f;
+    expect(started).toBe(2);
+  });
+
   it('records a failed save in the log', async () => {
     const s = await load();
     await s.loadAll();

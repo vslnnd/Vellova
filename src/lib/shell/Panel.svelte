@@ -6,8 +6,27 @@
 
   let { title, onclose, children }: { title: string; onclose: () => void; children: Snippet } = $props();
   let box: HTMLElement;
-  $effect(() => box.focus());
+  const opener = document.activeElement as HTMLElement | null;
+  $effect(() => {
+    box.focus();
+    return () => opener?.focus();
+  });
+
+  /** Keeps Tab / Shift+Tab inside the dialog (the title bar stays clickable, so it is not inert). */
+  function trap(e: KeyboardEvent) {
+    if (e.key !== 'Tab') return;
+    const items = [...box.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((el) => !el.hasAttribute('disabled'));
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    const a = document.activeElement;
+    if (!box.contains(a) || a === box || (e.shiftKey ? a === first : a === last)) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={trap} />
 
 <button class="scrim" tabindex="-1" aria-label="Close {title}" onclick={onclose} transition:fade={{ duration: motion(180) }}></button>
 <div

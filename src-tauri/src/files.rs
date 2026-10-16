@@ -101,6 +101,23 @@ pub async fn save_text(path: String, text: String) -> Result<(), String> {
 }
 
 static CANCEL: AtomicBool = AtomicBool::new(false);
+static BUSY: AtomicBool = AtomicBool::new(false);
+
+/// Only one apply, undo or recovery runs at a time. Released when dropped.
+#[derive(Debug)]
+struct Busy;
+impl Busy {
+    fn take() -> Result<Busy, String> {
+        BUSY.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .map(|_| Busy)
+            .map_err(|_| "internal: Another batch is still running.".to_string())
+    }
+}
+impl Drop for Busy {
+    fn drop(&mut self) {
+        BUSY.store(false, Ordering::SeqCst);
+    }
+}
 
 #[derive(serde::Serialize)]
 pub struct FileInfo {
@@ -163,6 +180,7 @@ fn journal(app: &AppHandle, batch: &str, suffix: &str) -> Result<PathBuf, String
 #[tauri::command]
 pub async fn apply_plan(app: AppHandle, batch: String, ops: Vec<Op>) -> Result<Vec<OpResult>, String> {
     let path = journal(&app, &batch, ".jsonl")?;
+    let _busy = Busy::take()?;
     CANCEL.store(false, Ordering::SeqCst);
     let progress = |done: usize, total: usize| {
         let _ = app.emit("plan-progress", (done, total));
@@ -175,6 +193,7 @@ pub async fn apply_plan(app: AppHandle, batch: String, ops: Vec<Op>) -> Result<V
 pub async fn undo_batch(app: AppHandle, batch: String) -> Result<UndoReport, String> {
     let path = journal(&app, &batch, ".jsonl")?;
     let undo_path = journal(&app, &batch, ".undo.jsonl")?;
+    let _busy = Busy::take()?;
     CANCEL.store(false, Ordering::SeqCst);
     let progress = |_: usize, _: usize| {};
     let ctx = ops::Ctx { journal: &path, bin: &ops::RecycleBin, progress: &progress, cancel: &CANCEL };
@@ -191,6 +210,7 @@ pub fn cancel_apply() {
 /// that could not be repaired is reported again until it is.
 #[tauri::command]
 pub async fn recover_all(app: AppHandle) -> Result<UndoReport, String> {
+    let _busy = Busy::take()?;
     let mut rep = UndoReport::default();
     let Ok(rd) = fs::read_dir(data_dir(&app)?.join("journal")) else { return Ok(rep) };
     for p in rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "jsonl")) {
@@ -208,6 +228,14 @@ pub async fn recover_all(app: AppHandle) -> Result<UndoReport, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn busy_guard_allows_one_at_a_time_and_releases_on_drop() {
+        let first = Busy::take().unwrap();
+        assert!(Busy::take().unwrap_err().starts_with("internal:"));
+        drop(first);
+        assert!(Busy::take().is_ok());
+    }
 
     #[test]
     fn write_atomic_replaces_and_leaves_no_temp() {

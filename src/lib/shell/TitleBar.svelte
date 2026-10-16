@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { flush } from '../shared/state.svelte';
   import Island from './Island.svelte';
@@ -6,10 +7,15 @@
   let { oncancel, onundo, onrestart }: { oncancel: () => void; onundo: () => void; onrestart: () => void } = $props();
   const win = getCurrentWindow();
 
-  async function close() {
-    await flush();
-    await win.close();
-  }
+  // Every way of closing (button, Alt+F4, taskbar) saves pending changes first.
+  onMount(() => {
+    const off = win.onCloseRequested(async (e) => {
+      e.preventDefault();
+      await flush();
+      await win.destroy();
+    });
+    return () => void off.then((f) => f());
+  });
 </script>
 
 <header class="bar" data-tauri-drag-region>
@@ -25,7 +31,7 @@
     <button class="wb" aria-label="Maximize" onclick={() => win.toggleMaximize()}>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1" /></svg>
     </button>
-    <button class="wb close" aria-label="Close" onclick={close}>
+    <button class="wb close" aria-label="Close" onclick={() => win.close()}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
     </button>
   </div>
