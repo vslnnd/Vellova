@@ -67,6 +67,7 @@ function go(i: number) {
 export function startTour() {
   before = { rules: $state.snapshot(session.rules), profileId: session.profileId, ids: data.profiles.rename.map((p) => p.id) };
   clearFiles();
+  setAddFilter(inDir); // tour.dir is '' until the samples exist, so every add is refused until then
   session.rules = structuredClone(DEFAULT_RULES);
   session.profileId = null;
   ui.panel = null;
@@ -87,7 +88,6 @@ export async function beginSamples() {
   }
   data.settings.tour = { dir: tour.dir, batch: null, profile: null };
   save('settings');
-  setAddFilter(inDir);
   next();
 }
 
