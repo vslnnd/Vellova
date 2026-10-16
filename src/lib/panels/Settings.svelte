@@ -30,7 +30,7 @@
   const updatesChanged = () => save('settings');
   async function bring() {
     busy = true;
-    imported = await importOldData(false).catch((e) => `The import failed: ${e}`);
+    imported = await importOldData(false).catch((e) => `The import failed: ${String(e).replace(/^[a-z]+: /, "")}`);
     busy = false;
   }
 </script>

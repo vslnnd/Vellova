@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { importProfiles, isEmpty, mapHistory, mapProfiles, mapSettings, mergeImport, planImport } from '../src/lib/migrate/nomina';
+import { freshProfiles, importProfiles, isEmpty, mapHistory, mapProfiles, mapSettings, mergeImport, planImport } from '../src/lib/migrate/nomina';
 
 const PROFILES = [
   { id: 'p_1', name: 'Debit notes', keyword: 'Invoice No.:', position: 'below', prefix: 'CN_', suffix: '', description: 'monthly' },
@@ -92,5 +92,12 @@ describe('importing the previous rename app', () => {
     expect(importProfiles(JSON.stringify({ rename: ours, split: [] }))).toEqual(ours);
     expect(importProfiles(JSON.stringify(PROFILES)).map((p) => p.name)).toEqual(['Debit notes', 'Odd']);
     expect(importProfiles('not json')).toEqual([]);
+  });
+});
+
+describe('freshProfiles', () => {
+  it('drops ids already held and ids repeated within the import', () => {
+    const p = (id: string) => ({ id, name: id }) as never;
+    expect(freshProfiles(['a'], [p('a'), p('b'), p('b'), p('c')]).map((x) => x.id)).toEqual(['b', 'c']);
   });
 });

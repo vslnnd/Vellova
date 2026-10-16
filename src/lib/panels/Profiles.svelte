@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ask, open, save as saveDialog } from '@tauri-apps/plugin-dialog';
   import { ui } from '../app.svelte';
-  import { importProfiles } from '../migrate/nomina';
+  import { freshProfiles, importProfiles } from '../migrate/nomina';
   import { rulesFromProfile } from '../rename/engine/profile';
   import { useProfile } from '../rename/session.svelte';
   import { ipc } from '../shared/ipc';
@@ -56,8 +56,8 @@
     try {
       const path = await open({ filters: [{ name: 'JSON', extensions: ['json'] }] });
       if (!path) return;
-      const ids = new Set(data.profiles.rename.map((p) => p.id));
-      const fresh = importProfiles(new TextDecoder().decode(await ipc.readFile(path))).filter((p) => !ids.has(p.id));
+      
+      const fresh = freshProfiles(data.profiles.rename.map((p) => p.id), importProfiles(new TextDecoder().decode(await ipc.readFile(path))));
       data.profiles.rename = [...data.profiles.rename, ...fresh];
       save('profiles');
       message = fresh.length ? `Imported ${fresh.length} ${fresh.length === 1 ? 'profile' : 'profiles'}.` : 'No new profiles in that file.';

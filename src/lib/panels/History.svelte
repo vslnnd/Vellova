@@ -88,7 +88,7 @@
             {:else if !it.ok}
               <span class="pill err">{it.reason ? REASONS[it.reason].title : 'Failed'}</span>
             {:else if it.reason}
-              <span class="pill warn" title="The file was moved, but Undo can't put it back.">Done · can't be undone</span>
+              <span class="pill warn" title="Done, but Undo can't reverse this file.">Done · can't be undone</span>
             {/if}
           </li>
         {/each}

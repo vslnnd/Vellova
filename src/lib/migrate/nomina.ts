@@ -118,3 +118,9 @@ export function importProfiles(text: string): RenameProfile[] {
   const ours = list(items).map(ownProfile).filter((p): p is RenameProfile => !!p);
   return ours.length ? ours : Array.isArray(v) ? mapProfiles(items) : [];
 }
+
+/** The imported profiles whose id is new: not in `ids` and not repeated within the import. */
+export const freshProfiles = (ids: Iterable<string>, imported: RenameProfile[]): RenameProfile[] => {
+  const seen = new Set(ids);
+  return imported.filter((p) => !seen.has(p.id) && !!seen.add(p.id));
+};
