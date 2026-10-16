@@ -9,6 +9,7 @@ import { extract146 } from './golden-146.mjs';
 import { extractItems } from '../src/lib/rename/engine/pdfItems.ts';
 import { findValue } from '../src/lib/rename/engine/findValue.ts';
 
+async function main() {
 const require = createRequire(import.meta.url);
 const { values: opts, positionals } = parseArgs({
   allowPositionals: true,
@@ -34,11 +35,22 @@ function pieces(items, keyword) {
   return 0;
 }
 
+/** Only a known producer family is printed; real metadata is free text and could hold a name. */
+const FAMILIES = ['Microsoft Reporting Services', 'Skia/PDF', 'pdf-lib', 'Microsoft: Print To PDF', 'iText', 'Adobe', 'HeadlessChrome', 'Chromium'];
+const family = (p) => FAMILIES.find((x) => p.toLowerCase().includes(x.toLowerCase())) ?? 'other';
+
 const files = readdirSync(folder).filter((f) => f.toLowerCase().endsWith('.pdf'));
 let match = 0;
+let unread = 0;
 const mismatches = [];
 for (const f of files) {
-  const bytes = readFileSync(join(folder, f));
+  let bytes;
+  try {
+    bytes = readFileSync(join(folder, f));
+  } catch {
+    unread++; // locked, denied or not a file: counted, never named
+    continue;
+  }
   const ref = await extract146(bytes, opts.keyword, opts.position);
   let mine;
   let stats = {};
@@ -53,7 +65,7 @@ for (const f of files) {
       items: items.length,
       charsPerItem: { min: lens[0] ?? 0, median: lens[lens.length >> 1] ?? 0, max: lens.at(-1) ?? 0 },
       keywordPieces: pieces(items, opts.keyword),
-      producer: String(info.Producer ?? 'unknown').replace(/[^\w .()-]/g, '').slice(0, 80),
+      producer: family(String(info.Producer ?? '')),
     };
     await doc.destroy();
   } catch {
@@ -62,5 +74,12 @@ for (const f of files) {
   if ((ref.success ? ref.value : null) === (mine.ok ? mine.value : null)) match++;
   else mismatches.push({ ...stats, outcome: `1.4.6 ${ref.success ? 'value' : 'none'} / Vellova ${mine.ok ? 'value' : mine.reason}` });
 }
-console.log(`${match} of ${files.length} match`);
+console.log(`${match} of ${files.length - unread} match` + (unread ? `, ${unread} could not be read` : ''));
 for (const m of mismatches) console.log(JSON.stringify(m));
+}
+
+// Any failure prints a fixed message: error text can contain real paths and file names.
+main().catch(() => {
+  console.error('compare failed');
+  process.exit(1);
+});
