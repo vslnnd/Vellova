@@ -139,6 +139,7 @@
     box-shadow: var(--shadow); overflow: hidden; transition: width 440ms var(--spring);
   }
   .island :focus-visible { outline-offset: -2px; }
+  .island .act:focus-visible, .island .tool.on:focus-visible { outline-color: var(--on-accent); }
   .island.attn { animation: shake 460ms cubic-bezier(0.36, 0.07, 0.19, 0.97) 1, glow 1.3s ease-in-out 460ms 3; }
   .island.okpulse { animation: okring 900ms ease-out 1; }
 
