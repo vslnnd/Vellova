@@ -93,6 +93,7 @@ function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
     else if (v && !v.ok) out.set(f, item(f, 'attention', { reason: v.reason, detail: v.detail }));
     else if (!input.pairs) out.set(f, item(f, 'pending', { detail: 'Waiting for the PDFs…' }));
     else if (!pdf) out.set(f, item(f, 'attention', { reason: 'no-match', detail: 'None of the PDF values appears in this file.' }));
+    else if (p?.status === 'pending') out.set(f, item(f, 'pending', { detail: p.detail }));
     else if (!pdfName) out.set(f, item(f, 'skipped', { detail: 'Its PDF is not being renamed.' }));
     else out.set(f, place(f, splitExt(pdfName).base, 'paired'));
   }

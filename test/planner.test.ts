@@ -123,6 +123,13 @@ describe('planRename', () => {
     ]);
   });
 
+  it('copy mode without a folder keeps a paired companion pending, not skipped', () => {
+    const X = 'C:\\in\\x.xlsx';
+    const items = plan({ files: [A, X], values: { [A]: ok('DN-17') }, pairs: { [X]: A }, destination: { mode: 'copy', folder: '' } });
+    expect(items.map((i) => i.status)).toEqual(['pending', 'pending']);
+    expect(items[1].detail).toBe('Choose a folder to copy into.');
+  });
+
   it('summary counts what will happen', () => {
     const items = plan({ files: [A, B, C], values: { [A]: ok('1'), [B]: ok('2'), [C]: { ok: false, reason: 'no-value', detail: '' } } });
     expect(summary(items, { mode: 'inplace' })).toEqual({ ops: 2, attention: 1, pending: 0, label: 'Rename 2 files' });
