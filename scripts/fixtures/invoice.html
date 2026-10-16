@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Invoice</title>
+<style>
+  @page { size: A4; margin: 18mm; }
+  body { font: 10pt Arial, sans-serif; color: #111; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; }
+  h1 { font-size: 16pt; margin: 0 0 4mm; }
+  table.meta td { padding: 1mm 4mm 1mm 0; }
+  table.lines { width: 100%; border-collapse: collapse; margin-top: 12mm; }
+  table.lines th, table.lines td { border-bottom: 1px solid #999; padding: 2mm; text-align: left; }
+  .total { margin-top: 6mm; text-align: right; font-weight: bold; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div><h1>Litware Example AG</h1><div>Musterweg 9<br>8000 Beispielstadt</div></div>
+    <table class="meta">
+      <tr><td>Invoice No.:</td><td>LW-2026-0420</td></tr>
+      <tr><td>Date</td><td>05.10.2026</td></tr>
+      <tr><td>Customer No.</td><td>C-0031</td></tr>
+    </table>
+  </div>
+  <table class="lines">
+    <tr><th>Item</th><th>Qty</th><th>Amount</th></tr>
+    <tr><td>Support hours</td><td>5</td><td>EUR 650.00</td></tr>
+    <tr><td>Setup</td><td>1</td><td>EUR 195.00</td></tr>
+  </table>
+  <p class="total">Total EUR 845.00</p>
+</body>
+</html>

@@ -1,0 +1,52 @@
+{
+  "ssrs-same-line.pdf": [
+    "Invoice No.:",
+    "Invoice No",
+    "No.:",
+    "Date:",
+    "Customer",
+    "Total"
+  ],
+  "ssrs-no-colon.pdf": [
+    "Invoice No",
+    "invoice no",
+    "Invoice Date",
+    "No",
+    "Amount due"
+  ],
+  "ssrs-below.pdf": [
+    "Debit note number",
+    "Due date",
+    "DN-2026-00018",
+    "Reference"
+  ],
+  "ssrs-two-column.pdf": [
+    "Invoice No.:",
+    "Order No.:",
+    "No.:",
+    "Date:",
+    "Bill to"
+  ],
+  "ssrs-repeat.pdf": [
+    "Invoice No.:",
+    "Total"
+  ],
+  "perglyph.pdf": [
+    "Invoice No.:",
+    "Date:"
+  ],
+  "tj-kerning.pdf": [
+    "Invoice No.:",
+    "Invoice",
+    "Date:"
+  ],
+  "scanned.pdf": [
+    "Invoice No.:"
+  ],
+  "html-print.pdf": [
+    "Invoice No.:",
+    "Date",
+    "Customer No.",
+    "Total"
+  ]
+}
