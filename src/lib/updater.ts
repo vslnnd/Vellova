@@ -1,5 +1,6 @@
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type Update } from '@tauri-apps/plugin-updater';
+import { whenIdle } from './rename/session.svelte';
 import { data, flush, log } from './shared/state.svelte';
 import { send } from './shell/islandState.svelte';
 
@@ -44,6 +45,7 @@ export async function restartToUpdate() {
   if (!ready) return;
   send({ type: 'restarting' });
   try {
+    await whenIdle();
     await flush();
     await ready.install();
     await relaunch();

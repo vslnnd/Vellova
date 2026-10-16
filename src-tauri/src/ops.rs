@@ -312,10 +312,15 @@ pub fn apply(ctx: &Ctx, batch: &str, ops: &[Op]) -> io::Result<Vec<OpResult>> {
             continue;
         }
         let tmp = Path::new(&op.from).with_file_name(format!(".~vellova-{tag}-{stamp}-{i}.tmp"));
-        let aside = j.add(&Entry::Temp { from: op.from.clone(), tmp: s(&tmp), to: op.to.clone() });
-        if let Err(e) = aside.and_then(|_| fs::rename(&op.from, &tmp)) {
+        // A failure here moved nothing (no line, or the rename did not happen): settled, whatever `tmp` looks
+        // like now. Its folder may even be gone (a stale plan), which `cleared` can't tell from a lost volume.
+        if let Err(e) = j.add(&Entry::Temp { from: op.from.clone(), tmp: s(&tmp), to: op.to.clone() }) {
             report(&mut out, fail(i, &e));
-            clean &= cleared(&tmp);
+            continue;
+        }
+        if let Err(e) = fs::rename(&op.from, &tmp) {
+            let _ = j.add(&Entry::Restored { tmp: s(&tmp), to: op.from.clone() }); // so recovery skips it too
+            report(&mut out, fail(i, &e));
             continue;
         }
         match clear_target(&mut j, ctx.bin, op, Path::new(&op.to), &leaving) {
@@ -407,7 +412,7 @@ fn arrived(j: &mut Journal, from: &str, tmp: &str, to: &str) -> io::Result<()> {
     j.add(&Entry::Final { from: from.into(), tmp: tmp.into(), to: to.into(), size, mtime })
 }
 
-/// Repairs a run that was interrupted (crash, power cut). Files left under a temporary name get a real name
+/// Repairs a run that was interrupted (crash or forced close). Files left under a temporary name get a real name
 /// again, and a file sent to the Recycle Bin for a replace that never happened comes back. What can't be
 /// repaired is reported with the path where the file is.
 pub fn recover(journal: &Path, bin: &dyn Bin) -> io::Result<UndoReport> {
@@ -1154,6 +1159,37 @@ mod tests {
         }
         assert_eq!(recover(&t.journal(), &t.bin).unwrap().restored, 1);
         assert_eq!(t.names(), ["a.pdf", "b.pdf"]);
+    }
+
+    #[test]
+    fn a_source_whose_folder_is_gone_closes_its_journal() {
+        // A stale plan: the source's folder was deleted after the plan was made.
+        let t = T::new();
+        let sub = t.root.join("sub");
+        fs::create_dir(&sub).unwrap();
+        let a = t.write("sub/a.pdf", "A");
+        fs::remove_dir_all(&sub).unwrap();
+        let r = t.apply(&[rn(&a, &t.p("sub/x.pdf"))]);
+        assert_eq!(r[0].code, Some("missing"));
+        assert!(matches!(read_journal(&t.journal()).unwrap().last(), Some(Entry::Done)));
+        let rep = recover(&t.journal(), &t.bin).unwrap();
+        assert_eq!((rep.restored, rep.skipped), (0, vec![]));
+    }
+
+    #[test]
+    fn a_source_whose_folder_is_gone_is_settled_beside_unsettled_work() {
+        // Same, in a journal an earlier run left open: recovery must not report the never-moved file.
+        let t = T::new();
+        let sub = t.root.join("sub");
+        fs::create_dir(&sub).unwrap();
+        let (a, b) = (t.write("sub/a.pdf", "A"), t.p("b.pdf"));
+        let tmp = t.write(".~vellova-b1-1-0.tmp", "B");
+        Journal::open(&t.journal()).unwrap().add(&Entry::Temp { from: b, tmp: tmp.clone(), to: t.p("y.pdf") }).unwrap();
+        fs::remove_dir_all(&sub).unwrap();
+        assert!(!t.apply(&[rn(&a, &t.p("sub/x.pdf"))])[0].ok);
+        let rep = recover(&t.journal(), &t.bin).unwrap();
+        assert_eq!((rep.restored, rep.skipped), (1, vec![]));
+        assert!(matches!(read_journal(&t.journal()).unwrap().last(), Some(Entry::Done)));
     }
 
     #[cfg(windows)]

@@ -6,6 +6,9 @@ import type { Batch } from './types';
 
 /** Batches whose undo ran this session. Ctrl+Z skips them, so a partly undone batch cannot trap it; History's Undo still works. */
 const attempted = new Set<string>();
+let undoing = false;
+/** An undo is moving files right now. */
+export const undoRunning = () => undoing;
 
 /** Stores a finished batch (or merges Apply-fixes results into it) and returns it with its summary. */
 export function recordBatch(b: Omit<Batch, 'summary'>): Batch {
@@ -22,7 +25,8 @@ export async function undoBatch(id: string): Promise<void> {
   attempted.add(id);
   send({ type: 'start', label: 'Undoing', total: 0, cancellable: false });
   try {
-    const r = await ipc.undoBatch(id);
+    undoing = true;
+    const r = await ipc.undoBatch(id).finally(() => (undoing = false));
     for (const s of r.skipped) {
       log({ level: 'warn', tool: b.tool, file: s.path, message: 'Not restored: the file changed after the batch, or is in use.', detail: s.reason });
     }

@@ -1,6 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
-import { recordBatch, undoLast } from '../shared/batches';
+import { recordBatch, undoLast, undoRunning } from '../shared/batches';
 import { ipc, ipcReason, type OpResult } from '../shared/ipc';
 import { extOf, splitPath } from '../shared/names';
 import { data, flush, log, save } from '../shared/state.svelte';
@@ -372,6 +372,12 @@ export async function runBatch(only?: string[]) {
 }
 
 export const applyFixes = () => runBatch([...session.fixed]);
+
+/** Waits until no batch or undo is moving files, up to `capMs`, so closing or updating doesn't stop one half-way. */
+export async function whenIdle(capMs = 30_000) {
+  const end = Date.now() + capMs;
+  while ((session.busy || undoRunning()) && Date.now() < end) await new Promise((r) => setTimeout(r, 100));
+}
 
 export function useProfile(p: RenameProfile) {
   session.rules = rulesFromProfile(p);

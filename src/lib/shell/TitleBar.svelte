@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { whenIdle } from '../rename/session.svelte';
   import { flush } from '../shared/state.svelte';
   import Island from './Island.svelte';
 
@@ -12,6 +13,7 @@
     const off = win.onCloseRequested(async (e) => {
       e.preventDefault();
       try {
+        await whenIdle(); // a running batch finishes first (recovery would repair it, but better not to need it)
         await Promise.race([flush(), new Promise((r) => setTimeout(r, 2000))]); // never trap the user in a window that will not close
       } finally {
         await win.destroy();

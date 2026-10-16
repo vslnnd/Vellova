@@ -206,7 +206,7 @@ pub fn cancel_apply() {
     CANCEL.store(true, Ordering::SeqCst);
 }
 
-/// Repairs every run that was interrupted (crash, power cut): see `ops::recover`. Runs at each start, so a file
+/// Repairs every run that was interrupted (crash or forced close): see `ops::recover`. Runs at each start, so a file
 /// that could not be repaired is reported again until it is.
 #[tauri::command]
 pub async fn recover_all(app: AppHandle) -> Result<UndoReport, String> {

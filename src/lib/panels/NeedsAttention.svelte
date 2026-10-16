@@ -37,7 +37,7 @@
       <button class="btn small" onclick={() => items.forEach((i) => skip(i.source))}>Skip all</button>
     </div>
     <p class="hint">{REASONS[reason].hint}</p>
-    {#if reason === 'exists' && session.rules.destination.mode === 'inplace' && session.rules.conflict === 'replace'}
+    {#if reason === 'exists' && session.rules.conflict === 'replace'}
       <p class="hint">If this drive has no Recycle Bin, Replace can't be used on it. Choose "Add (1)" or "Skip" for existing names in Rename, then Retry.</p>
     {/if}
     <ul>
