@@ -1,6 +1,8 @@
 <script lang="ts">
   import { PANEL_TITLES, ui } from './lib/app.svelte';
   import { undoLast } from './lib/shared/batches';
+  import Welcome from './lib/panels/Welcome.svelte';
+  import { data, save } from './lib/shared/state.svelte';
   import Rename from './lib/rename/Rename.svelte';
   import { cancelActivity } from './lib/rename/session.svelte';
   import Panel from './lib/shell/Panel.svelte';
@@ -8,13 +10,23 @@
   import TitleBar from './lib/shell/TitleBar.svelte';
   import Split from './lib/split/Split.svelte';
 
+  if (!data.settings.welcomed) ui.panel = 'welcome';
+
+  function closePanel() {
+    if (ui.panel === 'welcome') {
+      data.settings.welcomed = true;
+      save('settings');
+    }
+    ui.panel = null;
+  }
+
   const inText = () => !!document.activeElement?.matches('input:not([type=checkbox]):not([type=radio]), textarea, select');
 
   function onkeydown(e: KeyboardEvent) {
     const action = shortcut(e, inText());
     if (!action || (action === 'close-panel' && !ui.panel)) return;
     e.preventDefault();
-    if (action === 'close-panel') ui.panel = null;
+    if (action === 'close-panel') closePanel();
     else if (action === 'tool-rename') ui.tool = 'rename';
     else if (action === 'tool-split') ui.tool = 'split';
     else void undoLast();
@@ -34,8 +46,8 @@
     </div>
   </main>
   {#if ui.panel}
-    <Panel title={PANEL_TITLES[ui.panel]} onclose={() => (ui.panel = null)}>
-      <p class="hint">{PANEL_TITLES[ui.panel]}</p>
+    <Panel title={PANEL_TITLES[ui.panel]} onclose={closePanel}>
+      {#if ui.panel === 'welcome'}<Welcome onclose={closePanel} />{:else}<p class="hint">{PANEL_TITLES[ui.panel]}</p>{/if}
     </Panel>
   {/if}
 </div>

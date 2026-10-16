@@ -83,3 +83,6 @@ export async function flush() {
     await Promise.all([...inflight.values()]);
   }
 }
+
+/** True when this kind's file failed to load this session (so it is never saved). */
+export const notLoaded = (kind: Kind) => unloaded.has(kind);
