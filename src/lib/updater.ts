@@ -5,9 +5,16 @@ import { send } from './shell/islandState.svelte';
 
 let ready: Update | null = null;
 let timer: ReturnType<typeof setInterval> | undefined;
+let inFlight: Promise<string> | null = null;
 
 /** Looks for a newer release; one is downloaded in the background, then the island offers Restart. */
-export async function checkForUpdate(manual = false): Promise<string> {
+export function checkForUpdate(manual = false): Promise<string> {
+  // A check already running (e.g. the scheduled one mid-download) is shared, not repeated.
+  inFlight ??= runCheck().finally(() => (inFlight = null));
+  return inFlight.then((text) => (text || !manual ? text : "Couldn't reach the update server. Are you online?"));
+}
+
+async function runCheck(): Promise<string> {
   if (ready) return `Version ${ready.version} is ready. Restart to install it.`;
   try {
     const update = await check();
@@ -19,13 +26,14 @@ export async function checkForUpdate(manual = false): Promise<string> {
   } catch (e) {
     // spec: update-check failures are logged at info level and retried at the next interval
     log({ level: 'info', tool: 'app', message: 'Checking for updates failed; will try again later.', detail: String(e) });
-    return manual ? "Couldn't reach the update server. Are you online?" : '';
+    return '';
   }
 }
 
 /** Starts (or restarts, after a settings change) the periodic check. */
 export function scheduleUpdates(startup: boolean) {
   clearInterval(timer);
+  if (!import.meta.env.PROD) return;
   const { onStartup, everyHours } = data.settings.updates;
   if (startup && onStartup) void checkForUpdate();
   if (everyHours > 0) timer = setInterval(() => void checkForUpdate(), everyHours * 3_600_000);

@@ -56,7 +56,7 @@
     try {
       const path = await open({ filters: [{ name: 'JSON', extensions: ['json'] }] });
       if (!path) return;
-      
+
       const fresh = freshProfiles(data.profiles.rename.map((p) => p.id), importProfiles(new TextDecoder().decode(await ipc.readFile(path))));
       data.profiles.rename = [...data.profiles.rename, ...fresh];
       save('profiles');
