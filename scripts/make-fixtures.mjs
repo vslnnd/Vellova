@@ -17,7 +17,7 @@ const FIXED = new Date(Date.UTC(2026, 0, 1));
 /** keywords the golden script tries on each PDF (with every position) */
 const cases = {};
 
-async function pdf(name, keywords, draw) {
+async function pdf(name, keywords, draw, dir = OUT) {
   const doc = await PDFDocument.create();
   doc.setCreationDate(FIXED);
   doc.setModificationDate(FIXED);
@@ -29,8 +29,8 @@ async function pdf(name, keywords, draw) {
   // t(): draw text with y measured from the top, like a report designer
   const t = (text, x, y, size = 9, f = font) => page.drawText(text, { x, y: A4[1] - y, size, font: f });
   await draw({ doc, page, font, bold, t });
-  writeFileSync(join(OUT, name), await doc.save({ useObjectStreams: false }));
-  cases[name] = keywords;
+  writeFileSync(join(dir, name), await doc.save({ useObjectStreams: false }));
+  if (dir === OUT) cases[name] = keywords;
 }
 
 function letterhead({ t, bold }, title) {
@@ -174,5 +174,23 @@ writeFileSync(join(PAIR, 'list-18.csv'), '﻿Ref;Customer;Amount\r\n"DN-2026-000
 writeFileSync(join(PAIR, 'remit-19.xml'), '<?xml version="1.0"?>\n<remittance><ref>CN-2026-00019</ref></remittance>\n');
 writeFileSync(join(PAIR, 'note-17.txt'), 'Payment for DN-2026-00017 received.\r\n');
 
+// The tour's sample set, bundled with the app: four invoices with a number, one without, one matching export.
+const TOUR = resolve('src-tauri/resources/tour');
+mkdirSync(TOUR, { recursive: true });
+const sampleInvoice = (no) => (c) => {
+  letterhead(c, 'INVOICE');
+  c.t('Invoice No.:', 330, 140); c.t(no, 430, 140);
+  c.t('Date:', 330, 154); c.t('16.10.2026', 430, 154);
+  lines(c, 220, [['Sample service', '1', '100,00']]);
+};
+for (const [file, no] of [['scan_0011.pdf', 'INV-2041'], ['scan_0012.pdf', 'INV-2042'], ['scan_0013.pdf', 'INV-2043'], ['scan_0015.pdf', 'INV-2044']]) {
+  await pdf(file, [], sampleInvoice(no), TOUR);
+}
+await pdf('scan_0014.pdf', [], (c) => {
+  letterhead(c, 'DELIVERY NOTE');
+  c.t('Delivery date:', 330, 140); c.t('16.10.2026', 430, 140);
+  lines(c, 220, [['Sample parcel', '1', '']]);
+}, TOUR);
+writeFileSync(join(TOUR, 'export_0012.xlsx'), book([['Invoice No.:', 'Amount'], ['INV-2042', 100]]));
 writeFileSync(join(OUT, 'cases.json'), `${JSON.stringify(cases, null, 2)}\n`);
 console.log(`wrote ${Object.keys(cases).length} PDFs with cases, plus broken.pdf, empty.pdf and ${PAIR}`);

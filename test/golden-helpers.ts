@@ -10,10 +10,10 @@ export const golden: Record<string, Record<string, string | null>> = JSON.parse(
 export const cases: Record<string, string[]> = JSON.parse(readFileSync('test/fixtures/cases.json', 'utf8'));
 
 /** Reads a fixture with pdf.js 3.11.174: 'legacy' is what Nomina 1.4.6 ran in Node, 'modern' is what the app runs in WebView2. */
-export async function fixtureItems(build: 'legacy' | 'modern', file: string): Promise<Item[]> {
+export async function fixtureItems(build: 'legacy' | 'modern', file: string, dir = 'test/fixtures'): Promise<Item[]> {
   const lib = require(build === 'legacy' ? 'pdfjs-dist/legacy/build/pdf.js' : 'pdfjs-dist/build/pdf.js');
   lib.GlobalWorkerOptions.workerSrc = false;
-  const data = new Uint8Array(readFileSync(`test/fixtures/${file}`));
+  const data = new Uint8Array(readFileSync(`${dir}/${file}`));
   const doc = await lib.getDocument({ data, isEvalSupported: false, verbosity: 0 }).promise;
   try {
     return await extractItems(doc as DocLike);

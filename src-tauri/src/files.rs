@@ -206,6 +206,21 @@ pub fn cancel_apply() {
     CANCEL.store(true, Ordering::SeqCst);
 }
 
+/// Deletes a batch's journals (the tour's sample batch, once it has left History). Takes the busy guard, so it
+/// never runs during a batch, an undo or recovery; the caller tries again later.
+#[tauri::command]
+pub async fn forget_batch(app: AppHandle, batch: String) -> Result<(), String> {
+    let _busy = Busy::take()?;
+    for suffix in [".jsonl", ".undo.jsonl"] {
+        if let Err(e) = fs::remove_file(journal(&app, &batch, suffix)?) {
+            if e.kind() != io::ErrorKind::NotFound {
+                return Err(err(e));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Repairs every run that was interrupted (crash or forced close): see `ops::recover`. Runs at each start, so a file
 /// that could not be repaired is reported again until it is.
 #[tauri::command]

@@ -17,6 +17,9 @@ export const ipc = {
   undoBatch: (batch: string) => invoke<UndoReport>('undo_batch', { batch }),
   cancelApply: () => invoke<void>('cancel_apply'),
   recoverAll: () => invoke<UndoReport>('recover_all'),
+  forgetBatch: (batch: string) => invoke<void>('forget_batch', { batch }),
+  tourPrepare: () => invoke<string>('tour_prepare'),
+  tourCleanup: (dir: string) => invoke<void>('tour_cleanup', { dir }),
 };
 
 const FILE_REASONS: Reason[] = ['missing', 'permission', 'locked'];
