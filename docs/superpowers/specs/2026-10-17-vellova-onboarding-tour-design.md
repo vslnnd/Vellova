@@ -75,20 +75,20 @@ The counter covers steps 3–16, shown as 1–14.
 | # | Target | Hint | Advances when |
 |---|---|---|---|
 | 1 | Welcome card | (Welcome text above) | **Try it with sample files** / **Skip** |
-| 2 | Start card | "Let's rename five sample invoices. Nothing on your computer is touched — they live in a temporary folder." | **Start** |
+| 2 | Start card | "Let's rename five sample invoices. Nothing on your computer is touched. They live in a temporary folder." | **Start** |
 | 3 | Drop zone | "Drag the sample files in here." Buttons: **Open the folder** (Explorer, via opener reveal) and **Add them for me** | the six sample files are in the list |
-| 4 | Keyword field | "Type `Invoice No.:` — the label printed just before each number." | the keyword is set and no file is pending |
+| 4 | Keyword field | "Type `Invoice No.:`, the label printed just before each number." | the keyword is set and no file is pending |
 | 5 | Position buttons | "The number comes *after* the label. Pick Below or Above when your invoices put it under or over it." | Next |
 | 6 | Preview list | "Every new name, before anything changes." | Next |
 | 7 | Row of the PDF with no number | "This invoice has no number, so Vellova asks you. Type a name for it, then press Enter." | that row has a typed name |
 | 8 | The matching `.xlsx` row | "The spreadsheet with the same number gets the same new name automatically." | Next |
 | 9 | Apply button | "Rename them." | the batch has finished |
-| 10 | Island Undo | "Changed your mind? Undo puts every name back — it's also in History any time later." | the undo has finished |
+| 10 | Island Undo | "Changed your mind? Undo puts every name back. It's also in History any time later." | the undo has finished |
 | 11 | Save as new profile | "Save this setup. Next time, pick the profile and drop files." | a profile has been saved during the tour |
 | 12 | Island Rename/Split | "Switch tools here. Split arrives in the next update." | Next |
 | 13 | Island History | "History: every batch, undoable, plus the log." | Next |
 | 14 | Island Profiles | "Profiles: your saved setups." | Next |
-| 15 | Island Settings | "Settings: theme, updates — and this tour again." | Next |
+| 15 | Island Settings | "Settings: theme, updates, and this tour again." | Next |
 | 16 | Theme switch | "Light or dark." | Next |
 | 17 | Done card | "You're set. You can replay this tour from Settings." | **Finish** (then cleanup) |
 

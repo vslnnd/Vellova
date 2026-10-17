@@ -6048,7 +6048,7 @@ The panels are thin views over tested state, so they have no unit tests. Each st
       <ul>
         {#each b.items as it, i (i)}
           <li>
-            <span class="mono">{it.from ? name(it.from) : '—'}</span> → <span class="mono">{name(it.to)}</span>
+            <span class="mono">{it.from ? name(it.from) : '-'}</span> → <span class="mono">{name(it.to)}</span>
             {#if !it.ok}<span class="pill err">{it.reason ? REASONS[it.reason].title : 'Failed'}</span>{/if}
           </li>
         {/each}

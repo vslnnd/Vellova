@@ -82,7 +82,7 @@
       <ul>
         {#each b.items as it, i (i)}
           <li>
-            <span class="mono">{it.from ? name(it.from) : '—'}</span> → <span class="mono">{name(it.to)}</span>
+            <span class="mono">{it.from ? name(it.from) : '-'}</span> → <span class="mono">{name(it.to)}</span>
             {#if it.pending}
               <span class="pill warn">Unfinished</span>
             {:else if !it.ok}

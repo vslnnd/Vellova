@@ -173,9 +173,9 @@ States and timing:
 
 | State | Content | Behaviour |
 |---|---|---|
-| Idle | as above | — |
+| Idle | as above | - |
 | Reading | "Reading N PDFs…" with an indeterminate sweep, plus Cancel | Shown while totals are unknown |
-| Working | "Renaming k of N" / "Splitting k of N" with a determinate bar, a moving sheen, and Cancel | — |
+| Working | "Renaming k of N" / "Splitting k of N" with a determinate bar, a moving sheen, and Cancel | - |
 | Done | A check that draws itself, plus a single green ring pulse; "N files renamed" plus Undo | After **4 s** the island springs back to idle and an **undo chip slides in** from the left |
 | Attention | Warning icon; "N files need attention" plus Review | Shakes **once** (2–3 px, ~460 ms), then a warm glow pulses **3 times** and stops. After 6 s it collapses to an amber chip |
 | Update ready | The download arrow drops in, then **nudges continuously**; "Update ready" plus Restart | After **3.5 s** it collapses to a download chip that nudges 3 times, then rests |

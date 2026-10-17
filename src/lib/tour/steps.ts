@@ -54,20 +54,20 @@ const positionGone = (v: TourView) => filesGone(v) ?? (valuesGone(v) ? 'Pick Aft
 const numbersGone = (v: TourView) => filesGone(v) ?? (valuesGone(v) ? 'The numbers are no longer found. Skip the tour, then start it again from Settings.' : null);
 
 export const STEPS: TourStep[] = [
-  { id: 'start', title: 'Try it out', text: "Let's rename five sample invoices. Nothing on your computer is touched — they live in a temporary folder.", done: 'card' },
+  { id: 'start', title: 'Try it out', text: "Let's rename five sample invoices. Nothing on your computer is touched. They live in a temporary folder.", done: 'card' },
   { id: 'drop', target: 'drop', text: 'Drag the sample files in here.', done: (v) => v.samples === SAMPLE_COUNT },
-  { id: 'keyword', target: 'keyword', text: 'Type `Invoice No.:` — the label printed just before each number.', done: (v) => v.values >= WITH_VALUE && !v.reading, lost: filesGone },
+  { id: 'keyword', target: 'keyword', text: 'Type `Invoice No.:`, the label printed just before each number.', done: (v) => v.values >= WITH_VALUE && !v.reading, lost: filesGone },
   { id: 'position', target: 'position', text: 'The number comes after the label. Pick Below or Above when your invoices put it under or over it.', done: 'next', lost: positionGone },
   { id: 'preview', target: 'preview', text: 'Every new name, before anything changes.', done: 'next', lost: numbersGone },
   { id: 'name', target: 'name-row', text: 'This invoice has no number, so Vellova asks you. Type a name for it, then press Enter.', done: (v) => v.named, lost: numbersGone },
   { id: 'pair', target: 'pair-row', text: 'The spreadsheet with the same number gets the same new name automatically.', done: 'next', lost: numbersGone },
   { id: 'apply', target: 'apply', text: 'Rename them.', done: (v) => !!v.batch && !v.busy, lost: numbersGone },
-  { id: 'undo', target: 'undo', text: "Changed your mind? Undo puts every name back — it's also in History any time later.", done: (v) => v.undone && !v.busy },
+  { id: 'undo', target: 'undo', text: "Changed your mind? Undo puts every name back. It's also in History any time later.", done: (v) => v.undone && !v.busy },
   { id: 'profile', target: 'profile', text: 'Save this setup. Next time, pick the profile and drop files.', done: (v) => !!v.profile },
   { id: 'tools', target: 'tools', text: 'Switch tools here. Split arrives in the next update.', done: 'next' },
   { id: 'history', target: 'history', text: 'History: every batch, undoable, plus the log.', done: 'next' },
   { id: 'profiles', target: 'profiles', text: 'Profiles: your saved setups.', done: 'next' },
-  { id: 'settings', target: 'settings', text: 'Settings: theme, updates — and this tour again.', done: 'next' },
+  { id: 'settings', target: 'settings', text: 'Settings: theme, updates, and this tour again.', done: 'next' },
   { id: 'theme', target: 'theme', text: 'Light or dark.', done: 'next' },
   { id: 'done', title: "You're set", text: 'You can replay this tour from Settings.', done: 'card' },
 ];
