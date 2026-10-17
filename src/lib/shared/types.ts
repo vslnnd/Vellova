@@ -9,6 +9,7 @@ export type Reason =
   | 'no-text'
   | 'unreadable'
   | 'no-match'
+  | 'no-column'
   | 'exists'
   | 'locked'
   | 'permission'
@@ -37,8 +38,27 @@ export type RenameProfile = {
   conflict: Conflict;
 };
 
+export type SplitMode = 'value' | 'people' | 'rows' | 'parts' | 'sheets';
+export type Param = { value: string; label: string; payable: boolean };
+export type Person = { name: string; weight: number };
+export type SplitFolder = { mode: 'source' } | { mode: 'folder'; path: string };
+export type SplitRules = {
+  mode: SplitMode;
+  sheet: string | null; // null = first sheet
+  header: { mode: 'default' } | { mode: 'manual'; row: number }; // row is 1-based
+  column: string; // header name: value column, or group column for people
+  params: Param[]; nonMatching: boolean;
+  people: Person[]; assign: 'blocks' | 'groups'; peopleOutput: 'files' | 'column'; summary: boolean;
+  rows: number; parts: number;
+  template: string; // '' = the mode's default
+  folder: SplitFolder; subfolder: boolean;
+  format: 'same' | 'xlsx' | 'csv';
+  conflict: Conflict;
+};
+export type SplitProfile = { id: string; name: string; desc: string; rules: SplitRules; archiveFolder: string | null };
+
 /** `pending`: recorded before the batch ran and no result came back yet (the app stopped mid-batch). */
-export type BatchItem = { from: string; to: string; ok: boolean; reason?: Reason; pending?: boolean };
+export type BatchItem = { from: string; to: string; ok: boolean; reason?: Reason; pending?: boolean; archived?: true };
 
 export type Batch = {
   id: string;
@@ -51,6 +71,7 @@ export type Batch = {
   items: BatchItem[];
   undoable: boolean;
   undone?: boolean;
+  rerun?: { files: string[]; rules: SplitRules; profileId: string | null };
 };
 
 /** What a running tour has made, kept in settings so a crash mid-tour is cleaned up at the next start. */
@@ -61,6 +82,7 @@ export type Settings = {
   theme: 'system' | 'dark' | 'light';
   updates: { onStartup: boolean; everyHours: number };
   rename: { folder: string; recursive: boolean };
+  split: { archive: boolean; favourites: string[]; folder: string };
   welcomed: boolean;
   tour: TourMarker | null;
 };

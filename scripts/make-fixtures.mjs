@@ -4,6 +4,7 @@ import {
   PDFDocument, PDFOperator, PDFOperatorNames, StandardFonts, beginText, endText, moveText, setFontAndSize,
 } from 'pdf-lib';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -192,5 +193,73 @@ await pdf('scan_0014.pdf', [], (c) => {
   lines(c, 220, [['Sample parcel', '1', '']]);
 }, TOUR);
 writeFileSync(join(TOUR, 'export_0012.xlsx'), book([['Invoice No.:', 'Amount'], ['INV-2042', 100]]));
+
+// Split fixtures.
+const SPLIT = join(OUT, 'split');
+mkdirSync(SPLIT, { recursive: true });
+const regions = ['North', 'South', 'East', 'West'];
+const people = ['Ana Test', 'Ben Sample', 'Cleo Fake', 'Dan Example'];
+const exWorkbook = () => {
+  const wb = new ExcelJS.Workbook();
+  wb.created = FIXED;
+  wb.modified = FIXED;
+  return wb;
+};
+
+{
+  const wb = exWorkbook();
+  const ws = wb.addWorksheet('Report');
+  ws.getCell('A1').value = 'Fake Costs Report';
+  ws.getCell('A1').font = { bold: true, size: 14 };
+  ws.mergeCells('A1:E1');
+  ws.getCell('A2').value = 'Synthetic data';
+  ws.addRow(['Region', 'Cost centre', 'Person', 'Amount', 'Note']);
+  ws.getRow(3).font = { bold: true };
+  ws.getRow(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+  // data rows 4..44 minus the blank row 20: 40 data rows
+  for (let i = 0; i < 41; i++) {
+    const r = 4 + i;
+    if (r === 20) continue;
+    const row = ws.getRow(r);
+    row.values = [regions[i % 4], 1001 + (i % 5), people[i % 4], 100 + i * 12.5, `note ${i}`];
+    if (i % 2) row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
+    row.getCell(4).numFmt = '#,##0.00';
+  }
+  ws.getCell('D4').value = 100;
+  ws.getCell('F4').value = { formula: 'D4*2', result: 200 };
+  ws.columns.forEach((c, i) => { c.width = [12, 14, 16, 12, 20][i] ?? 10; });
+  ws.getColumn(5).hidden = true;
+  writeFileSync(join(SPLIT, 'formatted.xlsx'), Buffer.from(await wb.xlsx.writeBuffer()));
+}
+
+{
+  const wb = exWorkbook();
+  const ws = wb.addWorksheet('Data');
+  ws.addRow(['Region', 'Person', 'Amount']);
+  for (let i = 0; i < 12; i++) ws.addRow([regions[i % 4], people[i % 4], 50 + i * 7]);
+  wb.addWorksheet('Notes').addRow(['Synthetic notes']);
+  writeFileSync(join(SPLIT, 'simple.xlsx'), Buffer.from(await wb.xlsx.writeBuffer()));
+}
+
+writeFileSync(
+  join(SPLIT, 'bom-semicolon.csv'),
+  '﻿ID;Name;Amount\r\n00123;"Doe, Jane";1.234,56\r\n456;Test Person;78,90\r\n00789;Sample Co;5,00\r\n',
+);
+// Windows-1250 bytes written directly: Č=C8 a=61 k=6B o=6F v=76 e=65 c=63, Đ=D0 u=75 r=72 đ=F0 e=65 v=76 a=61 c=63, Š=8A i=69 b=62 e=65 n=6E i=69 k=6B
+writeFileSync(
+  join(SPLIT, 'cp1250.csv'),
+  Buffer.concat([
+    Buffer.from('City,Count\r\n', 'latin1'),
+    Buffer.from([0xc8, 0x61, 0x6b, 0x6f, 0x76, 0x65, 0x63]), Buffer.from(',1\r\n'),
+    Buffer.from([0xd0, 0x75, 0x72, 0xf0, 0x65, 0x76, 0x61, 0x63]), Buffer.from(',2\r\n'),
+    Buffer.from([0x8a, 0x69, 0x62, 0x65, 0x6e, 0x69, 0x6b]), Buffer.from(',3\r\n'),
+  ]),
+);
+{
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Region', 'Amount'], ['North', 10], ['South', 20]]), 'Alpha');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Person', 'Amount'], ['Ana Test', 5]]), 'Beta');
+  writeFileSync(join(SPLIT, 'legacy.xls'), XLSX.write(wb, { type: 'buffer', bookType: 'xls' }));
+}
 writeFileSync(join(OUT, 'cases.json'), `${JSON.stringify(cases, null, 2)}\n`);
 console.log(`wrote ${Object.keys(cases).length} PDFs with cases, plus broken.pdf, empty.pdf and ${PAIR}`);

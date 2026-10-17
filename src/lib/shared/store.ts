@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   updates: { onStartup: true, everyHours: 6 },
   rename: { folder: '', recursive: false },
+  split: { archive: false, favourites: [], folder: '' },
   welcomed: false,
   tour: null,
 };
@@ -29,6 +30,7 @@ export function withDefaults(v: unknown): Settings {
     ...s,
     updates: { ...DEFAULT_SETTINGS.updates, ...(isObj(s.updates) ? s.updates : {}) },
     rename: { ...DEFAULT_SETTINGS.rename, ...(isObj(s.rename) ? s.rename : {}) },
+    split: { ...DEFAULT_SETTINGS.split, ...(isObj(s.split) ? s.split : {}) },
     tour: isObj(s.tour) && typeof s.tour.dir === 'string' ? tourMarker(s.tour) : null,
   };
 }

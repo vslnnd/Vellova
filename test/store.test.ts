@@ -58,6 +58,11 @@ describe('settings defaults', () => {
     });
     expect(withDefaults('nonsense')).toEqual(DEFAULT_SETTINGS);
   });
+
+  it('defaults and merges the split settings', () => {
+    expect(withDefaults({}).split).toEqual({ archive: false, favourites: [], folder: '' });
+    expect(withDefaults({ split: { archive: true } }).split).toEqual({ archive: true, favourites: [], folder: '' });
+  });
 });
 
 describe('log', () => {
