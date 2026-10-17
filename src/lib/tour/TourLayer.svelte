@@ -109,7 +109,12 @@
     if (tour.card === 'welcome') skipWelcome();
     else if (tour.card === 'resume') tour.card = null;
     else if (card) void endTour(); // Start (nothing made yet) or Done: the card's own way out, nothing to confirm
-    else confirm = !confirm;
+    else ask(!confirm);
+  }
+  /** Opens or closes "Skip the tour?" and keeps the focus on its row (Keep going, or Skip tour again). */
+  function ask(on: boolean) {
+    confirm = on;
+    void tick().then(() => box?.querySelector<HTMLElement>(on ? '[data-keep]' : '[data-ask]')?.focus());
   }
 
   $effect(() => {
@@ -161,7 +166,7 @@
           {#if tour.error}<p class="err" role="alert">{tour.error}</p>{/if}
           <div class="row">
             {#if step.id === 'start'}
-              <button class="btn primary" onclick={() => void beginSamples()}>Start</button>
+              <button class="btn primary" disabled={tour.preparing} onclick={() => void beginSamples()}>Start</button>
               <button class="btn" onclick={() => void endTour()}>Skip tour</button>
             {:else}
               <button class="btn primary" onclick={() => void endTour()}>Finish</button>
@@ -200,12 +205,12 @@
           {#if confirm}
             <span class="q">Skip the tour?</span>
             <span class="grow"></span>
-            <button class="btn small" onclick={() => (confirm = false)}>Keep going</button>
+            <button class="btn small" data-keep onclick={() => ask(false)}>Keep going</button>
             <button class="btn small primary" onclick={() => void endTour()}>Skip</button>
           {:else}
             <span class="count">{n} of {counted.length}</span>
             <span class="grow"></span>
-            <button class="btn small" onclick={() => (confirm = true)}>Skip tour</button>
+            <button class="btn small" data-ask onclick={() => ask(true)}>Skip tour</button>
             {#if stuck || v.error}<button class="btn small" onclick={next}>Skip this step</button>{/if}
             {#if step.done === 'next'}<button class="btn small primary" onclick={next}>Next</button>{/if}
           {/if}

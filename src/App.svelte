@@ -13,7 +13,7 @@
   import TitleBar from './lib/shell/TitleBar.svelte';
   import Split from './lib/split/Split.svelte';
   import Tour from './lib/tour/TourLayer.svelte'; // not Tour.svelte: on Windows it would shadow the tour.svelte(.ts) module
-  import { tour, tourActive } from './lib/tour/tour.svelte';
+  import { current, tour, tourActive } from './lib/tour/tour.svelte';
   import { restartToUpdate, scheduleUpdates } from './lib/updater';
 
   if (!data.settings.welcomed) tour.card = 'welcome';
@@ -24,8 +24,8 @@
   const inText = () => !!document.activeElement?.matches('input:not([type=checkbox]):not([type=radio]), textarea, select');
 
   function onkeydown(e: KeyboardEvent) {
-    if (tourActive()) return;
     const action = shortcut(e, inText());
+    if (tourActive() && !(action === 'undo' && current()?.id === 'undo')) return; // during the tour only the step's own shortcut works
     if (!action || (action === 'close-panel' && !ui.panel)) return;
     e.preventDefault();
     if (action === 'close-panel') closePanel();

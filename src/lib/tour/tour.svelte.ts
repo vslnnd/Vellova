@@ -20,7 +20,12 @@ export const tour = $state({
   since: 0,
   /** why the samples couldn't be prepared */
   error: '',
+  /** the Start card is copying the samples */
+  preparing: false,
 });
+
+/** endTour is running (a second Skip waits for nothing) */
+let ending = false;
 
 /** What the Rename screen held before the tour, and which profiles already existed. */
 let before: { rules: RenameRules; profileId: string | null; ids: string[] } | null = null;
@@ -79,13 +84,24 @@ export function startTour() {
 
 /** The Start card's button: copies the samples, then points at the drop zone. */
 export async function beginSamples() {
+  if (tour.preparing) return;
   tour.error = '';
+  tour.preparing = true;
+  let dir: string;
   try {
-    tour.dir = await ipc.tourPrepare();
+    dir = await ipc.tourPrepare();
   } catch (e) {
     tour.error = `The sample files couldn't be prepared: ${String(e).replace(/^[a-z]+: /, '')}`;
     return;
+  } finally {
+    tour.preparing = false;
   }
+  if (tour.step !== 0) {
+    // the tour ended while copying: this folder is nobody's
+    ipc.tourCleanup(dir).catch(() => {});
+    return;
+  }
+  tour.dir = dir;
   data.settings.tour = { dir: tour.dir, batch: null, profile: null };
   save('settings');
   next();
@@ -107,6 +123,16 @@ export function next() {
 
 /** Finish or Skip: everything the tour made goes, and the Rename screen is as it was. */
 export async function endTour() {
+  if (ending) return;
+  ending = true;
+  try {
+    await finish();
+  } finally {
+    ending = false;
+  }
+}
+
+async function finish() {
   await whenIdle(); // a sample batch still renaming would otherwise come back into History after the cleanup
   // bring the marker up to date first (clearFiles resets session.batch), so a batch or profile made since the last Next goes too
   const now = data.settings.tour;
