@@ -5,3 +5,7 @@ src-tauri/gen/schemas/
 test/fixtures-private/
 *.log
 .claude/
+.env
+.env.*
+*.key
+*.password.txt
