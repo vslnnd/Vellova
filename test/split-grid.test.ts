@@ -40,6 +40,12 @@ describe('grid', () => {
     expect(g.sheets[0].rows).toBe(44);
     expect(g.rows).toHaveLength(44);
     expect(g.rows[3][1]).toBe('1001');
+    expect(g.rows[0]).toEqual(['Fake Costs Report']);
+  });
+
+  it('throws a clear error for an unknown sheet', async () => {
+    const src = await loadSource('.xlsx', fx('simple.xlsx'));
+    expect(() => gridOf(src, 'NoSuchSheet')).toThrow('Sheet not found: NoSuchSheet');
   });
 
   it('reads xls sheets', async () => {

@@ -78,7 +78,13 @@ export function gridOf(src: Source, sheet: string | null): Grid {
     if (!ws) throw new Error(`Sheet not found: ${sheet}`);
     const rows = Array.from({ length: ws.rowCount }, (_, r) => {
       const row = ws.getRow(r + 1);
-      return Array.from({ length: row.cellCount }, (_, c) => cellText(row.getCell(c + 1).value));
+      // a merged cell that is not its master reads as '' (ExcelJS gives it the master's value)
+      const t = Array.from({ length: row.cellCount }, (_, c) => {
+        const cell = row.getCell(c + 1);
+        return cell.isMerged && cell.master.address !== cell.address ? '' : cellText(cell.value);
+      });
+      while (t.length && t[t.length - 1] === '') t.pop();
+      return t;
     });
     return {
       sheets: all.map((w) => ({ name: w.name, rows: w.rowCount })),
