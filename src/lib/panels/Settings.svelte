@@ -4,6 +4,7 @@
   import { flushSync } from 'svelte';
   import { setTheme } from '../app.svelte';
   import { findOldData, importOldData } from '../migrate/run';
+  import { session } from '../rename/session.svelte';
   import { data, save } from '../shared/state.svelte';
   import { switchTheme, type ThemePref } from '../shell/theme';
   import { startTour } from '../tour/tour.svelte';
@@ -96,7 +97,7 @@
 
 <section class="card">
   <h3>Help</h3>
-  <div class="row"><button class="btn small" onclick={startTour}>Show the tour again</button></div>
+  <div class="row"><button class="btn small" disabled={session.busy} onclick={startTour}>Show the tour again</button></div>
 </section>
 
 <style>

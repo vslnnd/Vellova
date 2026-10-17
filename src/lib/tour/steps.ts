@@ -47,18 +47,21 @@ export type TourStep = {
 };
 
 const filesGone = (v: TourView) => (!v.batch && v.samples === 0 ? 'The sample files left the list.' : null);
-const keywordGone = (v: TourView) =>
-  filesGone(v) ?? (!v.batch && !v.reading && v.values < WITH_VALUE ? 'Type `Invoice No.:` again to find the numbers.' : null);
+const valuesGone = (v: TourView) => !v.batch && !v.reading && v.values < WITH_VALUE;
+/** the position picker is the step's target: picking After again brings the numbers back */
+const positionGone = (v: TourView) => filesGone(v) ?? (valuesGone(v) ? 'Pick After again: these samples have the number after the label.' : null);
+/** later steps can't reach the keyword or position fields */
+const numbersGone = (v: TourView) => filesGone(v) ?? (valuesGone(v) ? 'The numbers are no longer found. Skip the tour, then start it again from Settings.' : null);
 
 export const STEPS: TourStep[] = [
   { id: 'start', title: 'Try it out', text: "Let's rename five sample invoices. Nothing on your computer is touched — they live in a temporary folder.", done: 'card' },
   { id: 'drop', target: 'drop', text: 'Drag the sample files in here.', done: (v) => v.samples === SAMPLE_COUNT },
   { id: 'keyword', target: 'keyword', text: 'Type `Invoice No.:` — the label printed just before each number.', done: (v) => v.values >= WITH_VALUE && !v.reading, lost: filesGone },
-  { id: 'position', target: 'position', text: 'The number comes after the label. Pick Below or Above when your invoices put it under or over it.', done: 'next', lost: keywordGone },
-  { id: 'preview', target: 'preview', text: 'Every new name, before anything changes.', done: 'next', lost: keywordGone },
-  { id: 'name', target: 'name-row', text: 'This invoice has no number, so Vellova asks you. Type a name for it, then press Enter.', done: (v) => v.named, lost: keywordGone },
-  { id: 'pair', target: 'pair-row', text: 'The spreadsheet with the same number gets the same new name automatically.', done: 'next', lost: keywordGone },
-  { id: 'apply', target: 'apply', text: 'Rename them.', done: (v) => !!v.batch && !v.busy, lost: keywordGone },
+  { id: 'position', target: 'position', text: 'The number comes after the label. Pick Below or Above when your invoices put it under or over it.', done: 'next', lost: positionGone },
+  { id: 'preview', target: 'preview', text: 'Every new name, before anything changes.', done: 'next', lost: numbersGone },
+  { id: 'name', target: 'name-row', text: 'This invoice has no number, so Vellova asks you. Type a name for it, then press Enter.', done: (v) => v.named, lost: numbersGone },
+  { id: 'pair', target: 'pair-row', text: 'The spreadsheet with the same number gets the same new name automatically.', done: 'next', lost: numbersGone },
+  { id: 'apply', target: 'apply', text: 'Rename them.', done: (v) => !!v.batch && !v.busy, lost: numbersGone },
   { id: 'undo', target: 'undo', text: "Changed your mind? Undo puts every name back — it's also in History any time later.", done: (v) => v.undone && !v.busy },
   { id: 'profile', target: 'profile', text: 'Save this setup. Next time, pick the profile and drop files.', done: (v) => !!v.profile },
   { id: 'tools', target: 'tools', text: 'Switch tools here. Split arrives in the next update.', done: 'next' },
@@ -78,10 +81,14 @@ export const inSampleDir = (dir: string, path: string) => !!dir && pathKey(split
 /** The profile the tour may delete: the selected one, but only if it didn't exist when the tour began. */
 export const tourProfile = (profileId: string | null, beforeIds: string[]) => (profileId && !beforeIds.includes(profileId) ? profileId : null);
 
-/** History and profiles without what the tour made. */
+/**
+ * What the tour made: every History batch whose files all lie in the marker's sample folder (the marker's
+ * batch id is not trusted on its own; this also catches a batch a crash mid-Apply left unrecorded in the
+ * marker), and the marker's profile. `forget` lists those batches; `profiles` is the list without the profile.
+ */
 export function withoutTour(history: Batch[], profiles: RenameProfile[], m: TourMarker) {
   return {
-    history: history.filter((b) => !m.batch || b.id !== m.batch),
+    forget: history.filter((b) => b.items.length > 0 && b.items.every((i) => inSampleDir(m.dir, i.from))).map((b) => b.id),
     profiles: profiles.filter((p) => !m.profile || p.id !== m.profile),
   };
 }

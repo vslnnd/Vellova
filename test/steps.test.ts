@@ -34,7 +34,11 @@ describe('tour steps', () => {
 
   it('says what went missing before the batch, and nothing after it', () => {
     expect(step('keyword').lost!({ ...base, samples: 0 })).toMatch(/left the list/);
-    expect(step('preview').lost!({ ...base, values: 1 })).toMatch(/Invoice No/);
+    expect(step('position').lost!({ ...base, values: 1 })).toMatch(/Pick After again/);
+    expect(step('position').lost!({ ...base, samples: 0, values: 0 })).toMatch(/left the list/);
+    // the keyword field is blocked from the position step on: no hint asks to retype it
+    for (const id of ['position', 'preview', 'name', 'pair', 'apply']) expect(step(id).lost!({ ...base, values: 1 })).not.toMatch(/Invoice No/);
+    expect(step('preview').lost!({ ...base, values: 1 })).toMatch(/Skip the tour/);
     expect(step('preview').lost!({ ...base, values: 1, reading: true })).toBeNull();
     expect(step('apply').lost!({ ...base, samples: 0, values: 0, batch: 'b' })).toBeNull();
   });
@@ -63,16 +67,26 @@ describe('tourProfile', () => {
 });
 
 describe('withoutTour', () => {
-  const b = (id: string) => ({ id }) as Batch;
+  const dir = 'C:\\Temp\\vellova-tour-1';
+  const b = (id: string, ...from: string[]) => ({ id, items: from.map((f) => ({ from: f, to: f + '.new', ok: true })) }) as unknown as Batch;
   const p = (id: string) => ({ id }) as RenameProfile;
-  it('removes only the tour batch and profile', () => {
-    const r = withoutTour([b('t'), b('x')], [p('tp'), p('y')], { dir: 'd', batch: 't', profile: 'tp' });
-    expect(r.history.map((h) => h.id)).toEqual(['x']);
+  const sample = (n: string) => `${dir}\\${n}`;
+  it('forgets only batches whose files all lie in the sample folder, and the tour profile', () => {
+    const r = withoutTour([b('t', sample('a.pdf'), sample('b.pdf')), b('x', 'C:\\Real\\a.pdf')], [p('tp'), p('y')], { dir, batch: 't', profile: 'tp' });
+    expect(r.forget).toEqual(['t']);
     expect(r.profiles.map((h) => h.id)).toEqual(['y']);
   });
-  it('removes nothing when the tour made nothing', () => {
-    const r = withoutTour([b('x')], [p('y')], { dir: 'd', batch: null, profile: null });
-    expect(r.history).toHaveLength(1);
+  it('does not trust the marker batch id: a real batch under that id stays', () => {
+    const r = withoutTour([b('x', 'C:\\Real\\a.pdf'), b('mixed', sample('a.pdf'), 'C:\\Real\\b.pdf'), b('empty')], [], { dir, batch: 'x', profile: null });
+    expect(r.forget).toEqual([]);
+  });
+  it('catches a sample batch the marker never recorded (a crash mid-Apply)', () => {
+    expect(withoutTour([b('late', sample('a.pdf'))], [], { dir, batch: null, profile: null }).forget).toEqual(['late']);
+  });
+  it('removes nothing when the tour made nothing, or the marker has no folder', () => {
+    const r = withoutTour([b('x', 'C:\\Real\\a.pdf')], [p('y')], { dir, batch: null, profile: null });
+    expect(r.forget).toEqual([]);
     expect(r.profiles).toHaveLength(1);
+    expect(withoutTour([b('t', sample('a.pdf'))], [], { dir: '', batch: 't', profile: null }).forget).toEqual([]);
   });
 });

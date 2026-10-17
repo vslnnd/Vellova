@@ -54,7 +54,8 @@ export type Batch = {
 };
 
 /** What a running tour has made, kept in settings so a crash mid-tour is cleaned up at the next start. */
-export type TourMarker = { dir: string; batch: string | null; profile: string | null };
+/** `ended`: Finish or Skip was pressed, so a cleanup still pending at the next start offers no "Resume". */
+export type TourMarker = { dir: string; batch: string | null; profile: string | null; ended?: boolean };
 
 export type Settings = {
   theme: 'system' | 'dark' | 'light';

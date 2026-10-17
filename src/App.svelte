@@ -13,7 +13,7 @@
   import TitleBar from './lib/shell/TitleBar.svelte';
   import Split from './lib/split/Split.svelte';
   import Tour from './lib/tour/TourLayer.svelte'; // not Tour.svelte: on Windows it would shadow the tour.svelte(.ts) module
-  import { current, tour, tourActive } from './lib/tour/tour.svelte';
+  import { current, tour, tourActive, undoTour } from './lib/tour/tour.svelte';
   import { restartToUpdate, scheduleUpdates } from './lib/updater';
 
   if (!data.settings.welcomed) tour.card = 'welcome';
@@ -31,14 +31,17 @@
     if (action === 'close-panel') closePanel();
     else if (action === 'tool-rename') ui.tool = 'rename';
     else if (action === 'tool-split') ui.tool = 'split';
-    else void undoLast();
+    else undo();
   }
+
+  /** During the tour, Undo (Ctrl+Z or the island) touches only the tour's batch. */
+  const undo = () => void (tourActive() ? undoTour() : undoLast());
 </script>
 
 <svelte:window {onkeydown} />
 
 <div class="app">
-  <TitleBar oncancel={cancelActivity} onundo={() => void undoLast()} onrestart={() => void restartToUpdate()} />
+  <TitleBar oncancel={cancelActivity} onundo={undo} onrestart={() => void restartToUpdate()} />
   <main inert={!!ui.panel}>
     <div class="screen" class:on={ui.tool === 'rename'} inert={ui.tool !== 'rename'}>
       <Rename />

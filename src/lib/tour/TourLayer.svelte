@@ -192,7 +192,7 @@
           <path d="M12 20V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       {/if}
-      <div class="bubble" class:above role="dialog" aria-label="Tour, step {n} of {counted.length}" bind:this={box} style:left="{bubbleLeft}px" style:top="{bubbleTop}px" style:width="{BUBBLE}px">
+      <div class="bubble" class:above role="dialog" aria-modal="true" aria-label="Tour, step {n} of {counted.length}" bind:this={box} style:left="{bubbleLeft}px" style:top="{bubbleTop}px" style:width="{BUBBLE}px">
         {#if lost}<p class="lost">{@render rich(lost)}</p>{/if}
         <p aria-live="polite">{@render rich(step.text)}</p>
         {#if step.id === 'drop' || (lost && v.samples === 0)}

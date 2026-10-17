@@ -2,6 +2,7 @@ import { ui } from '../app.svelte';
 import { pathKey } from '../rename/engine/files';
 import { DEFAULT_RULES, type RenameRules } from '../rename/engine/profile';
 import { addPaths, clearFiles, session, setAddFilter, whenIdle } from '../rename/session.svelte';
+import { undoBatch } from '../shared/batches';
 import { ipc } from '../shared/ipc';
 import { join } from '../shared/names';
 import { data, log, save } from '../shared/state.svelte';
@@ -70,6 +71,7 @@ function go(i: number) {
 
 /** Opens the tour at its Start card. The Rename screen is cleared; what was on it comes back afterwards. */
 export function startTour() {
+  if (session.busy) return; // a real batch is renaming: the tour would clear its list and mark its batch as the tour's
   before = { rules: $state.snapshot(session.rules), profileId: session.profileId, ids: data.profiles.rename.map((p) => p.id) };
   clearFiles();
   setAddFilter(inDir); // tour.dir is '' until the samples exist, so every add is refused until then
@@ -109,6 +111,11 @@ export async function beginSamples() {
 
 export const addSamples = () => addPaths([tour.dir]);
 
+/** Undo while the tour runs: only the tour's own batch, never a real one. */
+export const undoTour = async () => {
+  if (session.batch) await undoBatch(session.batch);
+};
+
 /** Moves on. What the tour has made so far is written to the marker first. */
 export function next() {
   const m = data.settings.tour;
@@ -139,6 +146,8 @@ async function finish() {
   if (now) {
     now.batch = session.batch;
     now.profile = tourProfile(session.profileId, before?.ids ?? []);
+    now.ended = true;
+    save('settings');
   }
   tour.step = -1;
   tour.card = null;
@@ -159,24 +168,28 @@ async function finish() {
 /** Removes the tour's batch, journals, profile and sample folder. The marker stays until all of it is gone. */
 async function cleanUp(m: TourMarker) {
   const left = withoutTour(data.history, data.profiles.rename, m);
-  data.history = left.history;
   data.profiles.rename = left.profiles;
-  save('history');
   save('profiles');
   try {
-    if (m.batch) await ipc.forgetBatch(m.batch);
+    // a History entry goes only once its journals are forgotten, so a failure is retried at the next start
+    for (const id of left.forget) {
+      await ipc.forgetBatch(id);
+      data.history = data.history.filter((h) => h.id !== id);
+    }
     if (m.dir) await ipc.tourCleanup(m.dir);
     data.settings.tour = null;
   } catch (e) {
     log({ level: 'warn', tool: 'app', message: 'The tour sample files could not all be removed. Vellova tries again at the next start.', detail: String(e) });
   }
+  save('history');
   save('settings');
 }
 
-/** At start, after recovery: a tour that a closed app left behind is cleaned up, then offered again once. */
+/** At start, after recovery: a tour that a closed app left behind is cleaned up, then offered again once (not after Finish or Skip). */
 export async function tourOnStart() {
   const m = data.settings.tour;
   if (!m) return;
+  const resume = !m.ended;
   await cleanUp(m);
-  if (!data.settings.tour && !tourActive()) tour.card = 'resume';
+  if (resume && !data.settings.tour && !tourActive()) tour.card = 'resume';
 }

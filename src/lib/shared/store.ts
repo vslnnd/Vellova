@@ -29,8 +29,14 @@ export function withDefaults(v: unknown): Settings {
     ...s,
     updates: { ...DEFAULT_SETTINGS.updates, ...(isObj(s.updates) ? s.updates : {}) },
     rename: { ...DEFAULT_SETTINGS.rename, ...(isObj(s.rename) ? s.rename : {}) },
-    tour: isObj(s.tour) && typeof s.tour.dir === 'string' ? (s.tour as Settings['tour']) : null,
+    tour: isObj(s.tour) && typeof s.tour.dir === 'string' ? tourMarker(s.tour) : null,
   };
+}
+
+/** A marker keeps `ended` only when it is a boolean. */
+function tourMarker(t: Record<string, unknown>): Settings['tour'] {
+  const { ended, ...rest } = t;
+  return (typeof ended === 'boolean' ? { ...rest, ended } : rest) as Settings['tour'];
 }
 
 /**

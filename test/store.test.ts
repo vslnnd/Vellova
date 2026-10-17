@@ -135,4 +135,10 @@ describe('history', () => {
     expect(withDefaults({ tour: { dir: 'C:\\Temp\\vellova-tour-1', batch: 'b', profile: null } }).tour).toEqual({ dir: 'C:\\Temp\\vellova-tour-1', batch: 'b', profile: null });
     expect(withDefaults({}).tour).toBeNull();
   });
+
+  it('keeps a tour marker `ended` only when it is a boolean', () => {
+    const t = { dir: 'C:\\Temp\\vellova-tour-1', batch: null, profile: null };
+    expect(withDefaults({ tour: { ...t, ended: true } }).tour).toEqual({ ...t, ended: true });
+    expect(withDefaults({ tour: { ...t, ended: 'yes' } }).tour).toEqual(t);
+  });
 });
