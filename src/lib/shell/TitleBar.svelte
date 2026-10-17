@@ -29,7 +29,7 @@
     <span data-tauri-drag-region>Vellova</span>
   </div>
   <Island {oncancel} {onundo} {onrestart} />
-  <div class="win">
+  <div class="win" data-tour-free>
     <button class="wb" aria-label="Minimize" onclick={() => win.minimize()}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 12h14" /></svg>
     </button>

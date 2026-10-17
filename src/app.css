@@ -12,7 +12,7 @@
   --ok: #5BC995; --okring: rgba(91, 201, 149, 0.45); --okink: #5BC995; --oksoft: rgba(91, 201, 149, 0.14);
   --warn: #F0B84D; --warnsoft: rgba(240, 184, 77, 0.16); --warnink: #F0B84D; --glow1: rgba(240, 184, 77, 0.32); --glow2: rgba(240, 184, 77, 0.38);
   --err: #FF8A8A; --errsoft: rgba(255, 138, 138, 0.12); --errink: #FF8A8A;
-  --track: #2A2F39; --hover: rgba(255, 255, 255, 0.08); --shadow: 0 8px 24px rgba(0, 0, 0, 0.38); --sheen: rgba(255, 255, 255, 0.55);
+  --track: #2A2F39; --hover: rgba(255, 255, 255, 0.08); --shadow: 0 8px 24px rgba(0, 0, 0, 0.38); --sheen: rgba(255, 255, 255, 0.55); --veil: rgba(5, 7, 10, 0.62);
 }
 :root[data-theme='light'] {
   color-scheme: light;
@@ -23,7 +23,7 @@
   --ok: #13784A; --okring: rgba(19, 120, 74, 0.35); --okink: #106C43; --oksoft: rgba(19, 120, 74, 0.1);
   --warn: #8F5B00; --warnsoft: rgba(143, 91, 0, 0.1); --warnink: #855400; --glow1: rgba(200, 140, 20, 0.25); --glow2: rgba(214, 150, 20, 0.32);
   --err: #BF2A2A; --errsoft: rgba(191, 42, 42, 0.08); --errink: #B52626;
-  --track: #D8DCE3; --hover: rgba(18, 21, 27, 0.06); --shadow: 0 8px 24px rgba(16, 24, 40, 0.12); --sheen: rgba(255, 255, 255, 0.6);
+  --track: #D8DCE3; --hover: rgba(18, 21, 27, 0.06); --shadow: 0 8px 24px rgba(16, 24, 40, 0.12); --sheen: rgba(255, 255, 255, 0.6); --veil: rgba(16, 24, 40, 0.45);
 }
 
 * { box-sizing: border-box; }

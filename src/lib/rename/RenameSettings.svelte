@@ -27,7 +27,7 @@
 </script>
 
 <div class="settings">
-  <div class="card">
+  <div class="card" data-tour="profile">
     <label class="label" for="rn-profile">Profile</label>
     <select id="rn-profile" class="field" value={session.profileId ?? ''} onchange={(e) => pick(e.currentTarget.value)}>
       <option value="">No profile</option>
@@ -47,9 +47,9 @@
   <div class="card">
     <h3>Value from PDF</h3>
     <label class="label" for="rn-kw">Keyword</label>
-    <input id="rn-kw" class="field mono" placeholder="Invoice No.:" spellcheck="false" bind:value={session.rules.keyword} />
+    <input id="rn-kw" data-tour="keyword" class="field mono" placeholder="Invoice No.:" spellcheck="false" bind:value={session.rules.keyword} />
     <span class="label" id="rn-pos">The value is … the keyword</span>
-    <div class="seg" role="group" aria-labelledby="rn-pos">
+    <div class="seg" role="group" aria-labelledby="rn-pos" data-tour="position">
       {#each POSITIONS as [v, label] (v)}
         <button aria-pressed={rules.position === v} onclick={() => (session.rules.position = v)}>{label}</button>
       {/each}

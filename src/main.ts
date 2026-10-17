@@ -8,6 +8,7 @@ import { setTheme } from './lib/app.svelte';
 import { watchSystemTheme } from './lib/shell/theme';
 import { data, loadAll, log } from './lib/shared/state.svelte';
 import { ipc } from './lib/shared/ipc';
+import { tourOnStart } from './lib/tour/tour.svelte';
 
 setTheme('system');
 loadAll()
@@ -20,5 +21,5 @@ loadAll()
     void ipc.recoverAll().then((r) => {
       if (r.restored) log({ level: 'warn', tool: 'app', message: `${r.restored} file(s) left under a temporary name by an interrupted batch got their name back.` });
       for (const s of r.skipped) log({ level: 'error', tool: 'app', file: s.path, message: 'An interrupted batch left this file behind.', detail: s.reason });
-    }).catch((e) => log({ level: 'error', tool: 'app', message: 'Recovery could not run.', detail: String(e) }));
+    }).catch((e) => log({ level: 'error', tool: 'app', message: 'Recovery could not run.', detail: String(e) })).finally(() => void tourOnStart());
   });

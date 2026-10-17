@@ -2,6 +2,7 @@
   import { extOf, splitExt, splitPath } from '../shared/names';
   import type { PlanItem, Status } from '../shared/types';
   import { clearFiles, pickFiles, pickFolder, plan, refresh, removeFile, session, setName, skip } from './session.svelte';
+  import { tourRow } from '../tour/tour.svelte';
 
   const PILL: Record<Status, [string, string]> = {
     ready: ['ok', 'Ready'],
@@ -33,10 +34,10 @@
   {#if !session.rules.keyword.trim()}
     <p class="hint banner">Type the keyword that comes before the value to see the new names.</p>
   {/if}
-  <ul>
+  <ul data-tour="preview">
     {#each plan.items as it (it.id)}
       {@const [tone, label] = PILL[it.status]}
-      <li class:dim={it.status === 'skipped' || it.status === 'unchanged'}>
+      <li class:dim={it.status === 'skipped' || it.status === 'unchanged'} data-tour={tourRow(it.source)}>
         <span class="from mono" title={it.source}>{nameOf(it.source)}</span>
         <span class="to">
           <input

@@ -5,6 +5,7 @@
   import { chips, layer, layerText, noticeText, TIMEOUT_MS, type Layer, type Notice } from './island';
   import { island, send } from './islandState.svelte';
   import { switchTheme } from './theme';
+  import { holdDone } from '../tour/tour.svelte';
 
   let { oncancel, onundo, onrestart }: { oncancel: () => void; onundo: () => void; onrestart: () => void } = $props();
 
@@ -17,7 +18,7 @@
   // notices fold into their chip after a while; "restored" just goes away
   $effect(() => {
     const ms = TIMEOUT_MS[active];
-    if (!ms) return;
+    if (!ms || (active === 'done' && holdDone())) return;
     const t = setTimeout(() => send({ type: 'collapse' }), ms);
     return () => clearTimeout(t);
   });
@@ -47,7 +48,7 @@
   <span class="sr" aria-live="polite">{text}</span>
 
   <div class="layer" class:on={active === 'tools'} bind:offsetWidth={w.tools}>
-    <div class="tools" role="group" aria-label="Tool">
+    <div class="tools" role="group" aria-label="Tool" data-tour="tools">
       <span class="slider" aria-hidden="true" style:left="{ui.tool === 'rename' ? 0 : 108}px" style:width="{ui.tool === 'rename' ? 108 : 92}px"></span>
       <button class="tool" class:on={ui.tool === 'rename'} aria-pressed={ui.tool === 'rename'} style:width="108px" title="Rename (Ctrl+1)" onclick={() => (ui.tool = 'rename')}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2" /><path d="M12 5v14" /><path d="M9 19h6" /></svg>Rename
@@ -57,16 +58,16 @@
       </button>
     </div>
     <span class="divider" aria-hidden="true"></span>
-    <button class="ib" aria-label="History" aria-pressed={ui.panel === 'history'} onclick={() => toggle('history')}>
+    <button class="ib" data-tour="history" aria-label="History" aria-pressed={ui.panel === 'history'} onclick={() => toggle('history')}>
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
     </button>
-    <button class="ib" aria-label="Profiles" aria-pressed={ui.panel === 'profiles'} onclick={() => toggle('profiles')}>
+    <button class="ib" data-tour="profiles" aria-label="Profiles" aria-pressed={ui.panel === 'profiles'} onclick={() => toggle('profiles')}>
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z" /></svg>
     </button>
-    <button class="ib" aria-label="Settings" aria-pressed={ui.panel === 'settings'} onclick={() => toggle('settings')}>
+    <button class="ib" data-tour="settings" aria-label="Settings" aria-pressed={ui.panel === 'settings'} onclick={() => toggle('settings')}>
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
     </button>
-    <button class="ib theme" class:dark={ui.dark} aria-label={ui.dark ? 'Switch to light theme' : 'Switch to dark theme'} onclick={toggleTheme}>
+    <button class="ib theme" data-tour="theme" class:dark={ui.dark} aria-label={ui.dark ? 'Switch to light theme' : 'Switch to dark theme'} onclick={toggleTheme}>
       <svg class="sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
       <svg class="moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" /></svg>
     </button>
@@ -101,7 +102,7 @@
       {#if active === 'done'}<svg class="check" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>{/if}
     </span>
     <span class="msg">{island.done}</span>
-    <button class="act" onclick={onundo}>Undo</button>
+    <button class="act" data-tour="undo" onclick={onundo}>Undo</button>
   </div>
 
   <div class="layer note" class:on={active === 'attention'} bind:offsetWidth={w.attention}>

@@ -5,30 +5,26 @@
   import NeedsAttention from './lib/panels/NeedsAttention.svelte';
   import Profiles from './lib/panels/Profiles.svelte';
   import Settings from './lib/panels/Settings.svelte';
-  import Welcome from './lib/panels/Welcome.svelte';
-  import { data, save } from './lib/shared/state.svelte';
+  import { data } from './lib/shared/state.svelte';
   import Rename from './lib/rename/Rename.svelte';
   import { cancelActivity } from './lib/rename/session.svelte';
   import Panel from './lib/shell/Panel.svelte';
   import { shortcut } from './lib/shell/shortcuts';
   import TitleBar from './lib/shell/TitleBar.svelte';
   import Split from './lib/split/Split.svelte';
+  import Tour from './lib/tour/TourLayer.svelte'; // not Tour.svelte: on Windows it would shadow the tour.svelte(.ts) module
+  import { tour, tourActive } from './lib/tour/tour.svelte';
   import { restartToUpdate, scheduleUpdates } from './lib/updater';
 
-  if (!data.settings.welcomed) ui.panel = 'welcome';
+  if (!data.settings.welcomed) tour.card = 'welcome';
   if (import.meta.env.PROD) scheduleUpdates(true);
 
-  function closePanel() {
-    if (ui.panel === 'welcome') {
-      data.settings.welcomed = true;
-      save('settings');
-    }
-    ui.panel = null;
-  }
+  const closePanel = () => (ui.panel = null);
 
   const inText = () => !!document.activeElement?.matches('input:not([type=checkbox]):not([type=radio]), textarea, select');
 
   function onkeydown(e: KeyboardEvent) {
+    if (tourActive()) return;
     const action = shortcut(e, inText());
     if (!action || (action === 'close-panel' && !ui.panel)) return;
     e.preventDefault();
@@ -56,10 +52,10 @@
       {#if ui.panel === 'history'}<History />
       {:else if ui.panel === 'profiles'}<Profiles />
       {:else if ui.panel === 'settings'}<Settings />
-      {:else if ui.panel === 'attention'}<NeedsAttention />
-      {:else}<Welcome onclose={closePanel} />{/if}
+      {:else}<NeedsAttention />{/if}
     </Panel>
   {/if}
+  <Tour />
 </div>
 
 <style>

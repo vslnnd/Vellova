@@ -6,6 +6,7 @@
   import { findOldData, importOldData } from '../migrate/run';
   import { data, save } from '../shared/state.svelte';
   import { switchTheme, type ThemePref } from '../shell/theme';
+  import { startTour } from '../tour/tour.svelte';
   import { checkForUpdate, scheduleUpdates } from '../updater';
 
   const THEMES: [ThemePref, string][] = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']];
@@ -91,6 +92,11 @@
   <div class="row">
     <button class="btn small" onclick={() => void openUrl('https://github.com/vslnnd/Vellova/issues/new')}>Send feedback</button>
   </div>
+</section>
+
+<section class="card">
+  <h3>Help</h3>
+  <div class="row"><button class="btn small" onclick={startTour}>Show the tour again</button></div>
 </section>
 
 <style>
