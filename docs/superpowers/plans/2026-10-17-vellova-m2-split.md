@@ -21,6 +21,7 @@
 - By-value parity with Splitify: cell text is rich text joined, else `String(value)`; matching is `trim().toLowerCase()`; group key is the trimmed label, else `String(value)`; group order is first appearance; `NON_MATCHING` holds unmatched rows, then excluded rows; group pieces in names replace `/ \ ? % * : | " < >` with `-`.
 - `{date}` is the local run date as `yyyyMMdd`. Default templates: value `{date}_{file}_{group}`, people `{date}_{file}_{person}`, rows and parts `{date}_{file}_part{part}`, sheets `{date}_{file}_{sheet}`, Assigned to `{date}_{file}_assigned`. Summary file in file-per-person mode: `{date}_{file}_summary`.
 - Format: same as input (default; .xls becomes .xlsx) | always .xlsx | always .csv. CSV output is UTF-8 with BOM, delimiter `,`, or the input's delimiter when the input is .csv.
+- CSV numbers (user request): when a .csv is written as .xlsx, number-like cells become real numbers. Decimal separator is `,` for a `;`-delimited CSV, else `.`; the other character is a thousands separator only in groups of three. A cell stays text when it has a leading zero before another digit (`00123`; `0,5` is a number) or more than 15 digits; dates stay text. If any data cell in a column is a leading-zero ID, the whole column stays text. A .csv written as .csv keeps its original text.
 - Collisions: Add (1) | Skip | Replace (Recycle Bin), as Rename. A file being split in this run is never replaced; its name gets numbered.
 - Archive: `<base>_<yyyymmdd><ext>`, then `<base>_<yyyymmdd>_2<ext>`, `_3`... Runs after all outputs; a source qualifies when every one of its outputs was written and at least one was. A missing archive folder fails loudly (never created).
 - Run `npm test`, `npm run check` and (when Rust changed) `cargo test` in `src-tauri` before every commit; all must pass.
@@ -93,6 +94,7 @@ export function cellText(v: unknown): string;
 export function decodeCsv(bytes: Uint8Array): { text: string; encoding: 'utf-8' | 'windows-1250' | 'windows-1252'; delimiter: ',' | ';' | '\t' };
 export function loadSource(ext: string, bytes: Uint8Array): Promise<Source>;
 export function gridOf(src: Source, sheet: string | null): Grid;
+export function csvNumber(text: string, decimal: ',' | '.'): number | null; // the CSV numbers rule for one cell; null = keep as text
 ```
   `rows[r]` is the text of 1-based sheet row `r + 1` (ExcelJS) with blank rows kept as `[]`, so row indices map 1:1 to sheet rows. `merges` are A1 ranges like `A1:C1`.
 
@@ -100,7 +102,7 @@ export function gridOf(src: Source, sheet: string | null): Grid;
 - [ ] **Step 2: Add split fixtures to `make-fixtures.mjs`** (ExcelJS is now installed; fixed creation dates, deterministic data, fake names only):
   - `split/formatted.xlsx`: rows 1-2 a title block with merge `A1:E1`, header on row 3 (`Region, Cost centre, Person, Amount, Note`), 40 data rows with fills, bold header, number format `#,##0.00` on Amount, column widths, column E hidden, one formula column cell `=D4*2` with cached result, a blank row at row 20, and `Cost centre` values as numbers (1001, 1002, ...).
   - `split/simple.xlsx`: header on row 1, 12 data rows, two sheets (`Data`, `Notes`).
-  - `split/bom-semicolon.csv`: UTF-8 BOM, `;` delimiter, a quoted field containing a comma.
+  - `split/bom-semicolon.csv`: UTF-8 BOM, `;` delimiter, a quoted field containing a comma, an `Amount` column with values like `1.234,56`, and an `ID` column mixing `00123` and `456`.
   - `split/cp1250.csv`: Windows-1250 bytes with `Čakovec`, `Đurđevac`, `Šibenik`, comma delimiter (write the bytes directly).
   - `split/legacy.xls`: SheetJS `bookType: 'xls'`, 2 sheets.
   Run `npm run fixtures` and commit the files with the code.
@@ -109,6 +111,7 @@ export function gridOf(src: Source, sheet: string | null): Grid;
   - `decodeCsv` on `bom-semicolon.csv` → `utf-8`, `;`; on `cp1250.csv` → `windows-1250` and the text contains `Đurđevac`; on a 1252 buffer containing `à` (0xE0) and `è` (0xE8) → `windows-1252`; on `a\tb\n1\t2` → `\t`.
   - `gridOf(await loadSource('.xlsx', formatted))`: `rows[2]` is the header, `rows[19]` is `[]` (blank row), `merges` contains `A1:E1`, `sheets[0].rows` is 44 (2 title rows, header, 40 data rows, 1 blank row).
   - `.xls` and `.csv` sources: `sheets` lists both xls sheets; the csv quoted comma stays one field.
+  - `csvNumber`: `('1234', '.')`→1234; `('-12.5', '.')`→-12.5; `('1,234.56', '.')`→1234.56; `('1.234,56', ',')`→1234.56; `('0,5', ',')`→0.5; `('0', '.')`→0; `('00123', '.')`→null; `('1234567890123456', '.')`→null (16 digits); `('1,23.4', '.')`→null (bad grouping); `('12.5', ',')`→null (a point is not the decimal here and `12.5` is not a group of three); `('2026-01-05', '.')`→null; `(' 42 ', '.')`→42; `('', '.')`→null; `('1e5', '.')`→null.
 - [ ] **Step 4: Run and see them fail.** `npm test -- test/split-grid.test.ts`.
 - [ ] **Step 5: Implement `grid.ts`.** ExcelJS: `await new ExcelJS.Workbook().xlsx.load(bytes)`. SheetJS: `.xls` via `XLSX.read(bytes, { type: 'array', cellDates: true })`, rows via `sheet_to_json(ws, { header: 1, raw: true, defval: null, blankrows: true })`; `.csv` via `decodeCsv` then `XLSX.read(text, { type: 'string', raw: true, FS: delimiter })`. Encoding rule, pinned by the tests:
   ```
@@ -250,7 +253,7 @@ export function writeOutputs(src: Source, req: WriteReq): Promise<Uint8Array[]>;
   - `assigned`: an extra last column headed `Assigned to`, with the header row's last cell style, and each row's person.
   - `summary` in a rows output: a second sheet `Summary` with header `Person, Rows, Groups, Share %` and one row per person. `kind: 'summary'` alone → a workbook with just that sheet.
   - `kind: 'sheet'` → the whole sheet (every row, merges, widths) as a one-sheet workbook.
-  - Values source (`.csv`) to xlsx: values only, header repeated. To csv: UTF-8 BOM, the given delimiter, quotes where a field holds the delimiter, a quote or a newline, `\r\n` line ends.
+  - Values source (`.csv`) to xlsx: values only, header repeated; Amount cells `1.234,56` from `bom-semicolon.csv` are numbers `1234.56`; a column containing `00123` keeps every cell as text, including `456`; to csv the original text is unchanged. To csv: UTF-8 BOM, the given delimiter, quotes where a field holds the delimiter, a quote or a newline, `\r\n` line ends.
 - [ ] **Step 2: Run and see them fail.**
 - [ ] **Step 3: Implement** by porting Splitify `main.js` 375-479 (`copyStyle`, `copyRow`, `writeRegionFile`) to TypeScript, generalised to a row map that covers the title block, and to `values` sources (build an ExcelJS sheet from values first, then the same path). Output bytes: `new Uint8Array(await wb.xlsx.writeBuffer())`. Each `try/catch {}` in the original stays as a guard around style and merge copies.
 - [ ] **Step 4: Run and see them pass.**

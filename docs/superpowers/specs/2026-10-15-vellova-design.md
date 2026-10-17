@@ -345,7 +345,7 @@ Every data output repeats the header row and keeps column widths, hidden columns
   - sheets: `{date}_{file}_{sheet}`
   - Assigned to: `{date}_{file}_assigned`
 - **Folder:** chosen | same as the source | a favourite. Optional **subfolder per group or person**.
-- **Format:** same as the input (default) | always .xlsx | always .csv. .xls inputs default to .xlsx, because writing .xls isn't supported.
+- **Format:** same as the input (default) | always .xlsx | always .csv. .xls inputs default to .xlsx, because writing .xls isn't supported. When a .csv becomes .xlsx, number-like cells are saved as numbers (decimal comma for `;`-separated files); leading-zero IDs, numbers over 15 digits and dates stay text, and a column holding any leading-zero ID stays text.
 - **Collisions:** same rule as Rename, Add (1) | Skip | Replace (Recycle Bin). There are no silent overwrites.
 - **Preview:** a card per output file with name, row count, groups or people, and person share. Click a card to see its first 20 rows.
 
