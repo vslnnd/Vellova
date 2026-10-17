@@ -60,6 +60,9 @@ describe('inSampleDir', () => {
     expect(inSampleDir('C:\\Temp\\other', 'C:\\Temp\\other\\a.pdf')).toBe(false);
     expect(inSampleDir('C:\\Temp\\vellova-tour-12', 'C:\\Temp\\vellova-tour-12\\a.pdf')).toBe(true);
     expect(inSampleDir('C:\\Temp\\vellova-tour-', 'C:\\Temp\\vellova-tour-\\a.pdf')).toBe(false);
+    expect(inSampleDir('C:\\Temp\\vellova-tour-17\\sub', 'C:\\Temp\\vellova-tour-17\\sub\\a.pdf')).toBe(false);
+    expect(inSampleDir('C:\\Temp\\vellova-tour-1\\..\\..\\Users\\me', 'C:\\Temp\\vellova-tour-1\\..\\..\\Users\\me\\a.pdf')).toBe(false);
+    expect(inSampleDir('C:\\Temp\\x\\..\\vellova-tour-1', 'C:\\Temp\\x\\..\\vellova-tour-1\\a.pdf')).toBe(false);
   });
 });
 

@@ -78,7 +78,7 @@ export const counted = STEPS.filter((s) => s.target);
 /** `path` lies directly in the sample folder `dir` (any case or slash style). */
 export const inSampleDir = (dir: string, path: string) => {
   const key = pathKey(dir).replace(/\\+$/, '');
-  return /[\\/]vellova-tour-.+$/.test(key) && pathKey(splitPath(path).dir) === key;
+  return /[\\/]vellova-tour-[^\\/]+$/.test(key) && !/(^|[\\/])\.\.([\\/]|$)/.test(key) && pathKey(splitPath(path).dir) === key;
 };
 
 /** The profile the tour may delete: the selected one, but only if it didn't exist when the tour began. */

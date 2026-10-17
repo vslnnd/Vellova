@@ -11,12 +11,9 @@ use tauri::{AppHandle, Manager};
 const PREFIX: &str = "vellova-tour-";
 
 /// A folder `tour_prepare` made: directly inside `temp`, named `vellova-tour-` plus something.
+/// Purely lexical; `remove_tour_dir` applies it to canonical paths.
 pub(crate) fn is_tour_dir(temp: &Path, dir: &Path) -> bool {
-    let same = match (fs::canonicalize(temp), dir.parent().map(fs::canonicalize)) {
-        (Ok(t), Some(Ok(p))) => t == p,
-        _ => dir.parent() == Some(temp),
-    };
-    same
+    dir.parent() == Some(temp)
         && dir.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.len() > PREFIX.len() && n.starts_with(PREFIX))
 }
 
@@ -33,12 +30,20 @@ pub(crate) fn copy_samples(from: &Path, temp: &Path, stamp: u128) -> io::Result<
     Ok(dir)
 }
 
-/// Removes a tour folder (already gone is fine); anything else is refused.
+/// Removes a tour folder (already gone is fine); anything else is refused. The path that is checked
+/// is the path that is deleted: both are the canonical one, and anything unresolvable fails closed.
 pub(crate) fn remove_tour_dir(temp: &Path, dir: &Path) -> Result<(), String> {
-    if !is_tour_dir(temp, dir) {
+    let dir = match fs::canonicalize(dir) {
+        Ok(d) => d,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(err(e)),
+    };
+    let temp = fs::canonicalize(temp).map_err(err)?;
+    let real_dir = fs::symlink_metadata(&dir).map_err(err)?.file_type();
+    if !is_tour_dir(&temp, &dir) || !real_dir.is_dir() || real_dir.is_symlink() {
         return Err(format!("not a tour folder: {}", dir.display()));
     }
-    match fs::remove_dir_all(dir) {
+    match fs::remove_dir_all(&dir) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         r => r.map_err(err),
     }
@@ -119,5 +124,20 @@ mod tests {
             remove_tour_dir(Path::new(&upper), &dir).unwrap();
             assert!(!dir.exists());
         }
+    }
+
+    #[test]
+    fn remove_refuses_a_file_and_a_folder_outside_temp_and_tolerates_missing() {
+        let temp = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let file = temp.path().join("vellova-tour-9");
+        fs::write(&file, b"x").unwrap();
+        assert!(remove_tour_dir(temp.path(), &file).is_err());
+        assert!(file.exists());
+        let outside = other.path().join("vellova-tour-1");
+        fs::create_dir(&outside).unwrap();
+        assert!(remove_tour_dir(temp.path(), &outside).is_err());
+        assert!(outside.exists());
+        remove_tour_dir(temp.path(), &temp.path().join("vellova-tour-2")).unwrap();
     }
 }
