@@ -77,7 +77,7 @@ src/
   workers/pdf.worker.ts        pdf.js → words with positions, metadata, page render for click-to-pick
   workers/sheet.worker.ts      ExcelJS (.xlsx read/write with styles), SheetJS (.xls/.csv read, .csv write)
 src-tauri/
-  src/commands.rs              apply_plan, undo_batch, to_recycle_bin, archive_files
+  src/commands.rs              apply_plan, undo_batch, to_recycle_bin
   tauri.conf.json, capabilities/
 test/
   fixtures/                    generated synthetic files (committed)
@@ -96,9 +96,7 @@ Both engines are pure functions that produce a **Plan**: a list of operations. I
 type Op =
   | { kind: 'rename'; from: string; to: string }
   | { kind: 'copy'; from: string; to: string }
-  | { kind: 'move'; from: string; to: string }
-  | { kind: 'write'; to: string; payloadId: string }   // split output produced by sheet.worker
-  | { kind: 'archive'; from: string; folder: string };
+  | { kind: 'move'; from: string; to: string };
 type PlanItem = { id: string; source: string; op: Op | null; status: 'ready' | 'paired' | 'duplicate' | 'unchanged' | 'attention'; reason?: AttentionReason };
 ```
 
@@ -108,7 +106,7 @@ type PlanItem = { id: string; source: string; op: Op | null; status: 'ready' | '
 
 ### Rust commands
 
-- **`apply_plan(batchId, ops)`** executes the operations in order and appends a journal entry after each one. Each entry holds the operation, the result, and the final file's size and modified time. Swap and cycle renames (a→b, b→a) go through temporary names. A case-only rename (`a.pdf` → `A.pdf`) goes through a temporary name. Each operation returns its own result, so one failure doesn't stop the rest. Missing folders are created for `move`, `copy` and `write`.
+- **`apply_plan(batchId, ops)`** executes the operations in order and appends a journal entry after each one. Each entry holds the operation, the result, and the final file's size and modified time. Swap and cycle renames (a→b, b→a) go through temporary names. A case-only rename (`a.pdf` → `A.pdf`) goes through a temporary name. Each operation returns its own result, so one failure doesn't stop the rest. Missing folders are created for `move` and `copy`. Split outputs are staged by `stage_write` (Vellova's own staging files) and placed by journaled `copy` ops. Archiving is a `rename` op whose name the planner picks.
 - **`undo_batch(batchId)`** walks the journal backwards:
   - renames and moves are reversed;
   - copied and written files go to the Recycle Bin;
@@ -116,7 +114,7 @@ type PlanItem = { id: string; source: string; op: Op | null; status: 'ready' | '
 
   Any file whose size or modified time differs from the journal is left alone and reported.
 - **`to_recycle_bin(paths)`** uses the `trash` crate.
-- **`archive_files(files, folder)`** ports Splitify's approved archive design: move plus rename `<name>_<yyyymmdd>`, a `_2`/`_3` counter, a lock probe, and a cross-volume fallback.
+- **`folders_exist(paths)`** checks the archive folder; a missing archive folder fails loudly and is never created.
 
 Plugins: `fs`, `dialog`, `updater`, `process`, `opener`, `single-instance`, `window-state`.
 
@@ -312,7 +310,7 @@ Unsigned apps can't register in the Windows 11 compact menu, so the entries appe
 - .xlsx: read with ExcelJS, keeping styles.
 - .xls and .csv: read with SheetJS as values only. .csv encoding is auto-detected (UTF-8 with or without BOM, or Windows-1250/1252), and so is the delimiter (`,` `;` tab).
 - Pick the **sheet** (default: the first).
-- Pick the **header row** (default: auto-detected, meaning the first row whose non-empty cells are mostly text and that is followed by data rows; editable).
+- Pick the **header row**: **Default (1st row)** or **Manual** (click a row in a grid of the file's first 15 rows). Rows above a manual header are a title block, copied on top of every data output.
 
 ### Modes
 
