@@ -12,7 +12,11 @@ const PREFIX: &str = "vellova-tour-";
 
 /// A folder `tour_prepare` made: directly inside `temp`, named `vellova-tour-` plus something.
 pub(crate) fn is_tour_dir(temp: &Path, dir: &Path) -> bool {
-    dir.parent() == Some(temp)
+    let same = match (fs::canonicalize(temp), dir.parent().map(fs::canonicalize)) {
+        (Ok(t), Some(Ok(p))) => t == p,
+        _ => dir.parent() == Some(temp),
+    };
+    same
         && dir.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.len() > PREFIX.len() && n.starts_with(PREFIX))
 }
 
@@ -96,5 +100,24 @@ mod tests {
         remove_tour_dir(temp.path(), &dir).unwrap();
         assert!(!dir.exists());
         remove_tour_dir(temp.path(), &dir).unwrap();
+    }
+
+    #[test]
+    fn remove_accepts_an_equivalent_spelling_of_temp() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("vellova-tour-7");
+        fs::create_dir(&dir).unwrap();
+        let mut slash = temp.path().as_os_str().to_owned();
+        slash.push(std::path::MAIN_SEPARATOR_STR);
+        remove_tour_dir(Path::new(&slash), &dir).unwrap();
+        assert!(!dir.exists());
+        #[cfg(windows)]
+        {
+            let dir = temp.path().join("vellova-tour-8");
+            fs::create_dir(&dir).unwrap();
+            let upper = temp.path().to_string_lossy().to_uppercase();
+            remove_tour_dir(Path::new(&upper), &dir).unwrap();
+            assert!(!dir.exists());
+        }
     }
 }

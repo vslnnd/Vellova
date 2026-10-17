@@ -56,6 +56,11 @@ describe('inSampleDir', () => {
     expect(inSampleDir(dir, 'C:\\Temp\\vellova-tour-17\\sub\\x.pdf')).toBe(false);
     expect(inSampleDir('', 'C:\\x.pdf')).toBe(false);
   });
+  it('requires the folder itself to be vellova-tour- plus a name', () => {
+    expect(inSampleDir('C:\\Temp\\other', 'C:\\Temp\\other\\a.pdf')).toBe(false);
+    expect(inSampleDir('C:\\Temp\\vellova-tour-12', 'C:\\Temp\\vellova-tour-12\\a.pdf')).toBe(true);
+    expect(inSampleDir('C:\\Temp\\vellova-tour-', 'C:\\Temp\\vellova-tour-\\a.pdf')).toBe(false);
+  });
 });
 
 describe('tourProfile', () => {
