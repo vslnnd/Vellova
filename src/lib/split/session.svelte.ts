@@ -29,8 +29,12 @@ export const session = $state({
   failures: {} as Record<string, { reason: Reason; detail: string }>,
   /** item ids fixed in Needs attention, for Apply fixes */
   fixed: [] as string[],
-  /** outputs already written in this list's batch: they leave the preview while their source stays (a sibling failed) */
+  /**
+   * Outputs already written in `batch`: they leave the preview while their source stays (a sibling failed).
+   * They count only while that batch is not undone and the plan is still the one they were written under (`doneKey`).
+   */
   done: [] as string[],
+  doneKey: '',
   existing: [] as string[],
   loading: false,
   dirty: false,
@@ -57,10 +61,20 @@ const all = $derived.by(() => {
   });
 });
 
+/** The last batch is in History and not undone: what it wrote, and its failed archives, still stand. */
+const batchLive = () => {
+  const b = data.history.find((h) => h.id === session.batch);
+  return !!b && !b.undone;
+};
+/** What decides an output's id and content: a change re-plans, so earlier `done` ids no longer describe these outputs. */
+const planKey = (batch: string | null) => JSON.stringify([batch, session.rules, session.columnFor]);
+const liveDone = $derived(batchLive() && session.doneKey === planKey(session.batch) ? new Set(session.done) : new Set<string>());
+
 const items = $derived.by(() => {
-  const done = new Set(session.done);
+  const done = liveDone;
+  const live = batchLive();
   const archives = Object.entries(session.failures).flatMap(([id, f]): SplitItem[] =>
-    id.startsWith(ARCHIVE) ? [{ id, source: id.slice(ARCHIVE.length), op: null, status: 'attention', reason: f.reason, detail: f.detail, rows: 0 }] : [],
+    live && id.startsWith(ARCHIVE) ? [{ id, source: id.slice(ARCHIVE.length), op: null, status: 'attention', reason: f.reason, detail: f.detail, rows: 0 }] : [],
   );
   return [...all.filter((i) => !done.has(i.id)), ...archives];
 });
@@ -257,6 +271,8 @@ export async function retry(id: string) {
     return;
   }
   if (id.startsWith(ARCHIVE)) {
+    // its batch was undone: the outputs are gone, so the source must not be archived
+    if (!batchLive()) return;
     // nothing to re-plan: put the failure back until the run says otherwise
     if (failed) session.failures[id] = failed;
     return runBatch([id]);
@@ -315,13 +331,21 @@ const stageReason = (e: unknown) => {
 export async function runBatch(only?: string[]) {
   if (session.busy || session.loading || session.dirty || island.activity) return;
   const pick = only && new Set(only);
-  const outputs = all.filter((i) => i.op && !session.done.includes(i.id) && (pick ? pick.has(i.id) || pick.has(i.source) : i.status !== 'attention'));
-  const archiveOnly = pick ? [...pick].filter((id) => id.startsWith(ARCHIVE) && session.failures[id]).map(sourceOf) : [];
+  const outputs = all.filter((i) => i.op && !liveDone.has(i.id) && (pick ? pick.has(i.id) || pick.has(i.source) : i.status !== 'attention'));
+  const archiveOnly = pick && batchLive() ? [...pick].filter((id) => id.startsWith(ARCHIVE) && session.failures[id]).map(sourceOf) : [];
   if (!outputs.length && !archiveOnly.length) return;
   const last = pick && data.history.find((h) => h.id === session.batch);
   const id = last && !last.undone ? last.id : crypto.randomUUID();
   session.busy = true;
   cancelled = false;
+  // `done` and failed archives belong to one batch; a new batch starts without them
+  if (id !== session.batch) {
+    const old = Object.keys(session.failures).filter((k) => k.startsWith(ARCHIVE));
+    for (const k of old) delete session.failures[k];
+    settle(old.map(sourceOf));
+  }
+  if (id !== session.batch || session.doneKey !== planKey(id)) session.done = [];
+  session.doneKey = planKey(id);
   send({ type: 'start', label: outputs.length ? 'Splitting' : 'Archiving', total: outputs.length || archiveOnly.length, cancellable: true });
   const meta = { id, tool: 'split' as const, verb: 'created', profile: profile()?.name };
   const prev = id === last?.id ? $state.snapshot(last) : undefined;
@@ -336,77 +360,81 @@ export async function runBatch(only?: string[]) {
   const warn = (source: string, message: string) => log({ level: 'warn', tool: 'split', file: source, message: "Done, but Undo can't reverse this file.", detail: message });
   const ran = new Set<string>();
   const doneNow: string[] = [];
+  const sources = [...new Set(outputs.map((o) => o.source))];
+  let stagedAny = false;
   try {
     await flush();
-    // 1. stage: one worker call per source, one staged file per output
-    const staged: { item: SplitItem; op: Op }[] = [];
-    const sources = [...new Set(outputs.map((o) => o.source))];
-    let progress = 0;
-    for (const source of sources) {
-      if (cancelled) break;
-      const outs = outputs.filter((o) => o.source === source);
-      const f = session.files.find((x) => x.path === source)!;
-      const read = session.reads[source];
-      let parts: Uint8Array[];
-      try {
-        const bytes = await ipc.readFile(source).catch((e) => Promise.reject(ipcReason(e)));
-        const grid = read?.ok ? read.grid : undefined;
-        const header = session.rules.header.mode === 'manual' ? session.rules.header.row - 1 : 0;
-        parts = await writeFile(keyOf(f), extOf(source), bytes, {
-          sheet: session.rules.sheet, header, format: outs[0].format ?? 'xlsx', delimiter: grid?.delimiter ?? ',', outputs: outs.map((o) => o.spec!),
-        }).catch((e) => Promise.reject({ reason: (e as { internal?: boolean })?.internal ? 'internal' : 'unreadable', detail: String((e as Error)?.message ?? e) }));
-      } catch (e) {
-        const r = e as { reason: Reason; detail: string };
-        for (const o of outs) {
-          fail(o.id, source, r.reason, REASONS[r.reason].hint, r.detail);
-          ran.add(o.id);
-        }
-        progress += outs.length;
-        send({ type: 'progress', done: progress, total: outputs.length });
-        continue;
-      }
-      for (const [k, o] of outs.entries()) {
+    try {
+      // 1. stage: one worker call per source, one staged file per output
+      const staged: { item: SplitItem; op: Op }[] = [];
+      let progress = 0;
+      for (const source of sources) {
         if (cancelled) break;
+        const outs = outputs.filter((o) => o.source === source);
+        const f = session.files.find((x) => x.path === source)!;
+        const read = session.reads[source];
+        let parts: Uint8Array[];
         try {
-          const path = await ipc.stageWrite(id, outputs.indexOf(o), parts[k]);
-          staged.push({ item: o, op: { ...o.op!, from: path } });
+          const bytes = await ipc.readFile(source).catch((e) => Promise.reject(ipcReason(e)));
+          const grid = read?.ok ? read.grid : undefined;
+          const header = session.rules.header.mode === 'manual' ? session.rules.header.row - 1 : 0;
+          parts = await writeFile(keyOf(f), extOf(source), bytes, {
+            sheet: session.rules.sheet, header, format: outs[0].format ?? 'xlsx', delimiter: grid?.delimiter ?? ',', outputs: outs.map((o) => o.spec!),
+          }).catch((e) => Promise.reject({ reason: (e as { internal?: boolean })?.internal ? 'internal' : 'unreadable', detail: String((e as Error)?.message ?? e) }));
         } catch (e) {
-          const r = stageReason(e);
-          fail(o.id, source, r.reason, REASONS[r.reason].hint, r.detail);
-          ran.add(o.id);
+          const r = e as { reason: Reason; detail: string };
+          for (const o of outs) {
+            fail(o.id, source, r.reason, REASONS[r.reason].hint, r.detail);
+            ran.add(o.id);
+          }
+          progress += outs.length;
+          send({ type: 'progress', done: progress, total: outputs.length });
+          continue;
         }
-        send({ type: 'progress', done: ++progress, total: outputs.length });
+        for (const [k, o] of outs.entries()) {
+          if (cancelled) break;
+          if (!parts[k]) throw new Error(`The spreadsheet writer returned ${parts.length} files for ${outs.length} outputs.`);
+          stagedAny = true;
+          try {
+            const path = await ipc.stageWrite(id, outputs.indexOf(o), parts[k]);
+            staged.push({ item: o, op: { ...o.op!, from: path } });
+          } catch (e) {
+            const r = stageReason(e);
+            fail(o.id, source, r.reason, REASONS[r.reason].hint, r.detail);
+            ran.add(o.id);
+          }
+          send({ type: 'progress', done: ++progress, total: outputs.length });
+        }
       }
-    }
-    // 2. copy the staged outputs into place
-    if (staged.length) {
-      let results: OpResult[];
-      try {
-        results = await ipc.applyPlan(id, staged.map((s) => s.op));
-      } finally {
-        await ipc.stageClear(id).catch((e) => log({ level: 'warn', tool: 'split', message: 'Staged files could not be removed.', detail: String(e) }));
+      // 2. copy the staged outputs into place
+      if (staged.length) {
+        const results = await ipc.applyPlan(id, staged.map((s) => s.op));
+        const byIndex = new Map(results.map((r) => [r.i, r]));
+        staged.forEach(({ item, op }, i) => {
+          const o = outcome(item.source, op.to, byIndex.get(i));
+          if (!o) return;
+          ran.add(item.id);
+          batch.push(o.item);
+          if (o.warn) warn(item.source, o.warn);
+          if (o.failed) fail(item.id, item.source, o.failed.reason, REASONS[o.failed.reason].hint, o.failed.message);
+          else doneNow.push(item.id);
+        });
+        session.done = [...session.done, ...doneNow];
+        session.existing = [...session.existing, ...staged.map((s) => pathKey(s.op.to))];
       }
-      const byIndex = new Map(results.map((r) => [r.i, r]));
-      staged.forEach(({ item, op }, i) => {
-        const o = outcome(item.source, op.to, byIndex.get(i));
-        if (!o) return;
-        ran.add(item.id);
-        batch.push(o.item);
-        if (o.warn) warn(item.source, o.warn);
-        if (o.failed) fail(item.id, item.source, o.failed.reason, REASONS[o.failed.reason].hint, o.failed.message);
-        else doneNow.push(item.id);
-      });
-      session.done = [...session.done, ...doneNow];
-      session.existing = [...session.existing, ...staged.map((s) => pathKey(s.op.to))];
+    } finally {
+      if (stagedAny) await ipc.stageClear(id).catch((e) => log({ level: 'warn', tool: 'split', message: 'Staged files could not be removed.', detail: String(e) }));
     }
     // 3. archive: sources whose outputs were all written (at least one), and archives being retried
     const folder = archiveFolder();
     const done = new Set(session.done);
     const finished = (s: string) => {
       const its = all.filter((i) => i.source === s);
+      // an output skipped (by the conflict rule or by hand) was chosen not to be written: it doesn't hold the archive back
       return its.some((i) => done.has(i.id)) && its.every((i) => done.has(i.id) || i.status === 'skipped');
     };
-    const toArchive = folder && !cancelled ? [...new Set([...sources.filter((s) => doneNow.some((d) => sourceOf(d) === s) && finished(s)), ...archiveOnly])] : [];
+    // after a Cancel too: sources written in full before it are archived (Cancel stops only what had not started)
+    const toArchive = folder ? [...new Set([...sources.filter((s) => doneNow.some((d) => sourceOf(d) === s) && finished(s)), ...archiveOnly])] : [];
     if (folder && toArchive.length) {
       send({ type: 'start', label: 'Archiving', total: toArchive.length, cancellable: false });
       for (const s of toArchive) delete session.failures[ARCHIVE + s];
@@ -435,7 +463,7 @@ export async function runBatch(only?: string[]) {
       }
     }
   } catch (e) {
-    // the copy step failed before its first op (another batch running, journal not writable): nothing moved
+    // the copy step failed before its first op (another batch running, journal not writable, a writer fault): nothing moved
     data.history = putBackBatch(data.history, id, prev);
     save('history');
     log({ level: 'error', tool: 'split', message: 'The batch could not run.', detail: String(e) });
@@ -447,14 +475,16 @@ export async function runBatch(only?: string[]) {
   }
   const ranSources = new Set([...ran].map(sourceOf));
   session.fixed = session.fixed.filter((f) => !ran.has(f) && !(f === sourceOf(f) && ranSources.has(f)) && !(f.startsWith(ARCHIVE) && archiveOnly.includes(sourceOf(f))));
-  settle([...ranSources, ...archiveOnly]);
   data.history = putBackBatch(data.history, id, prev);
   if (!batch.length) {
+    settle([...ranSources, ...archiveOnly]);
     save('history');
     return void send({ type: 'stop' });
   }
   session.batch = id;
   const b = recordBatch({ ...meta, time: Date.now(), items: batch, undoable: batch.some((x) => x.ok), rerun });
+  // after the batch is current and recorded, so its `done` outputs count
+  settle([...ranSources, ...archiveOnly]);
   log({ level: 'info', tool: 'split', message: b.summary });
   send({ type: 'finish', text: b.summary, attention: plan.items.filter((i) => i.status === 'attention').length });
 }

@@ -158,6 +158,71 @@ describe('split session', () => {
     expect(s.session.reads[A]).toEqual({ ok: false, reason: 'no-column', detail: 'This file has no sheet "Data".' });
   });
 
+  it('a rules change brings back outputs written under the old rules', async () => {
+    const s = await load([A, B]);
+    m.applyPlan.mockImplementationOnce(async (_b: string, ops: Op[]) => ops.map((o, i) => ({ i, ok: !o.to.endsWith('_B_Y.xlsx'), code: 'locked' })));
+    await s.runBatch();
+    expect(s.plan.items.map((i) => i.id)).toEqual([`${B}|1`]);
+    s.session.rules.template = '{file}_{group}';
+    expect(s.plan.items.map((i) => [i.id, i.status])).toEqual([[`${B}|0`, 'ready'], [`${B}|1`, 'attention']]);
+  });
+
+  it('after an Undo, written outputs come back and a failed archive is gone (Retry does nothing)', async () => {
+    const s = await load([A], {});
+    m.applyPlan.mockImplementation(async (_b: string, ops: Op[]) => ops.map((o, i) => ({ i, ok: o.kind !== 'rename', code: 'locked' })));
+    await s.runBatch();
+    expect(s.plan.items.map((i) => i.id)).toEqual([`archive:${A}`]);
+    s.data.history[0].undone = true;
+    expect(s.plan.items.map((i) => [i.id, i.status])).toEqual([[`${A}|0`, 'ready'], [`${A}|1`, 'ready']]);
+    m.applyPlan.mockClear();
+    await s.retry(`archive:${A}`);
+    expect(m.applyPlan).not.toHaveBeenCalled();
+    expect(s.session.failures).toEqual({});
+  });
+
+  it('after Cancel, a source written in full before it is still archived', async () => {
+    const s = await load([A, B], {});
+    m.stageWrite.mockImplementation(async (_b: string, n: number) => {
+      if (n === 2) s.cancelActivity(); // while staging B's first output
+      return `C:\\stage\\${n}`;
+    });
+    await s.runBatch();
+    expect(m.cancelApply).toHaveBeenCalled();
+    expect(m.applyPlan.mock.calls[0][1]).toHaveLength(3);
+    expect(m.applyPlan.mock.calls[1][1].map((o: Op) => o.from)).toEqual([A]);
+  });
+
+  it('clears staging when the run stops between staging and the copy', async () => {
+    const s = await load();
+    m.writeFile.mockResolvedValue([new Uint8Array([0])]); // one part for two outputs
+    await s.runBatch();
+    expect(m.stageWrite).toHaveBeenCalledTimes(1);
+    expect(m.applyPlan).not.toHaveBeenCalled();
+    expect(m.stageClear).toHaveBeenCalledTimes(1);
+    expect(s.data.history).toEqual([]);
+  });
+
+  it('lists the subfolders the plan uses into existing; a missing one lists as empty', async () => {
+    const d = new Date();
+    const today = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    m.listDir.mockImplementation(async (dirs: string[]) => (dirs.includes('C:\\in\\X') ? [`C:\\in\\X\\${today}_A_X.xlsx`] : []));
+    const s = await load();
+    s.session.rules.subfolder = true;
+    await s.refresh();
+    expect(m.listDir).toHaveBeenLastCalledWith(['C:\\in\\X', 'C:\\in\\Y']);
+    expect(s.plan.items.map((i) => i.name)).toEqual([`${today}_A_X (1).xlsx`, `${today}_A_Y.xlsx`]);
+  });
+
+  it('shows "Splitting" while writing and "Archiving" while archiving', async () => {
+    const s = await load([A], {});
+    const { island } = await import('../src/lib/shell/islandState.svelte');
+    const labels: (string | undefined)[] = [];
+    m.stageWrite.mockImplementation(async (_b: string, n: number) => (labels.push(island.activity?.label), `C:\\stage\\${n}`));
+    m.foldersExist.mockImplementation(async () => (labels.push(island.activity?.label), [true]));
+    await s.runBatch();
+    expect([...new Set(labels)]).toEqual(['Splitting', 'Archiving']);
+  });
+
   it('re-runs with the files that still exist, falling back to the source folder', async () => {
     const s = await load();
     const { DEFAULT_SPLIT_RULES } = await import('../src/lib/split/engine/profile');

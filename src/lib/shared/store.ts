@@ -121,13 +121,13 @@ export function batchSummary(b: Batch): string {
 
 /**
  * Puts `b` on top of the history. A batch with the same id (Apply fixes) is merged: later results win per source
- * (Rename), or per target for Split, where a source's earlier failures also go once it has new results.
+ * (Rename), or per target for Split, where a failed archive also goes once its source is archived again.
  */
 export function mergeBatch(history: Batch[], b: Batch): Batch[] {
   const prev = history.find((h) => h.id === b.id);
   const replaced = (i: BatchItem) =>
     b.tool === 'split'
-      ? b.items.some((n) => n.to === i.to || (!i.ok && n.from === i.from))
+      ? b.items.some((n) => n.to === i.to || (!i.ok && i.archived && n.archived && n.from === i.from))
       : b.items.some((n) => n.from === i.from);
   const merged: Batch = prev
     ? {

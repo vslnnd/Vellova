@@ -67,7 +67,7 @@ describe('settings defaults', () => {
   it('checks every split setting by type', () => {
     expect(withDefaults({ split: { archive: 'yes', favourites: ['a', 3, 'a', 'b'], folder: 7, extra: 1 } }).split)
       .toEqual({ archive: false, favourites: ['a', 'b'], folder: '' });
-    expect(withDefaults({ split: { favourites: 'a', folder: 'C:\out' } }).split).toEqual({ archive: false, favourites: [], folder: 'C:\out' });
+    expect(withDefaults({ split: { favourites: 'a', folder: 'C:\\out' } }).split).toEqual({ archive: false, favourites: [], folder: 'C:\\out' });
     expect(withDefaults({ split: [] }).split).toEqual({ archive: false, favourites: [], folder: '' });
   });
 });
@@ -142,18 +142,25 @@ describe('history', () => {
   it('counts archived split items as files and names them', () => {
     const h = mergeBatch([], split('s1', [
       { from: 'a', to: 'A1', ok: true }, { from: 'a', to: 'A2', ok: true }, { from: 'b', to: 'B1', ok: true },
-      { from: 'a', to: 'arch\a', ok: true, archived: true }, { from: 'b', to: 'B2', ok: false, reason: 'locked' },
+      { from: 'a', to: 'C:\\arch\\a.xlsx', ok: true, archived: true }, { from: 'b', to: 'B2', ok: false, reason: 'locked' },
     ]));
     expect(h[0].summary).toBe('4 files created · 1 archived · 1 failed');
     expect(batchSummary(split('s2', [{ from: 'a', to: 'A1', ok: true }]))).toBe('1 file created');
   });
 
-  it('merges split fixes by target, dropping earlier failures of the same source', () => {
+  it('merges split fixes by target, keeping a failed output when a sibling succeeds', () => {
     let h = mergeBatch([], split('s1', [
-      { from: 'a', to: 'A1', ok: true }, { from: 'a', to: 'A2', ok: false, reason: 'locked' }, { from: 'b', to: 'B1', ok: false, reason: 'locked' },
+      { from: 'a', to: 'A1', ok: false, reason: 'locked' }, { from: 'a', to: 'A2', ok: false, reason: 'locked' }, { from: 'b', to: 'B1', ok: false, reason: 'locked' },
     ]));
-    h = mergeBatch(h, split('s1', [{ from: 'a', to: 'A2b', ok: true }, { from: 'c', to: 'B1', ok: true }]));
-    expect(h[0].items).toEqual([{ from: 'a', to: 'A1', ok: true }, { from: 'a', to: 'A2b', ok: true }, { from: 'c', to: 'B1', ok: true }]);
+    h = mergeBatch(h, split('s1', [{ from: 'a', to: 'A1', ok: true }, { from: 'c', to: 'B1', ok: true }]));
+    expect(h[0].items).toEqual([{ from: 'a', to: 'A2', ok: false, reason: 'locked' }, { from: 'a', to: 'A1', ok: true }, { from: 'c', to: 'B1', ok: true }]);
+  });
+
+  it('drops a failed archive once the same source is archived', () => {
+    const done = { from: 'a', to: 'C:\\arch\\a_20261021.xlsx', ok: true, archived: true as const };
+    let h = mergeBatch([], split('s1', [{ from: 'a', to: 'A1', ok: true }, { from: 'a', to: 'C:\\arch', ok: false, reason: 'missing', archived: true }]));
+    h = mergeBatch(h, split('s1', [done]));
+    expect(h[0].items).toEqual([{ from: 'a', to: 'A1', ok: true }, done]);
   });
 
   it('keeps the last 200 batches', () => {
