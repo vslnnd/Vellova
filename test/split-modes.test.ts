@@ -50,6 +50,11 @@ describe('fix round 1', () => {
   it('keepGroups deficit tie goes to earlier name', () => {
     expect(keepGroups(['x', 'y', 'z', 'w'], [P('A'), P('B')]).person).toEqual([0, 1, 0, 1]);
   });
+  it('keepGroups deficit tie with inexact weights', () => {
+    // targets 2.999999999999999, 1, 2: after the first row A and C tie at 2 mathematically
+    const r = keepGroups(['a', 'b', 'c', 'd', 'e', 'f'], [P('A', 0.3), P('B', 0.1), P('C', 0.2)]);
+    expect(r.person.slice(0, 2)).toEqual([0, 0]);
+  });
   it('keepGroups with no people', () => {
     expect(keepGroups(['a', 'b'], [])).toEqual({ person: [-1, -1], groups: [], warnings: [] });
   });

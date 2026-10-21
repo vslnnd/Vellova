@@ -67,7 +67,7 @@ export function keepGroups(keys: string[], people: Person[]): Assignment {
   for (const g of order) {
     let best = 0;
     for (let i = 1; i < people.length; i++) {
-      if (target[i] - assigned[i] > target[best] - assigned[best]) best = i;
+      if (target[i] - assigned[i] > target[best] - assigned[best] + EPS) best = i;
     }
     if (g.rows.length > target[best] + EPS) {
       warnings.push(`"${g.key}" has ${g.rows.length} rows, more than ${people[best].name}'s share of ${Math.round(target[best])}.`);
