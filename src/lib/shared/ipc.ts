@@ -18,6 +18,10 @@ export const ipc = {
   cancelApply: () => invoke<void>('cancel_apply'),
   recoverAll: () => invoke<UndoReport>('recover_all'),
   forgetBatch: (batch: string) => invoke<void>('forget_batch', { batch }),
+  stageWrite: (batch: string, n: number, bytes: Uint8Array) =>
+    invoke<string>('stage_write', bytes, { headers: { batch, n: String(n) } }),
+  stageClear: (batch: string) => invoke<void>('stage_clear', { batch }),
+  foldersExist: (paths: string[]) => invoke<boolean[]>('folders_exist', { paths }),
   tourPrepare: () => invoke<string>('tour_prepare'),
   tourCleanup: (dir: string) => invoke<void>('tour_cleanup', { dir }),
 };

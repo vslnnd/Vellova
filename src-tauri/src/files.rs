@@ -240,6 +240,54 @@ pub async fn recover_all(app: AppHandle) -> Result<UndoReport, String> {
     Ok(rep)
 }
 
+/// `base\staging\<batch>` for a valid batch id (ASCII alphanumerics and `-`, as for journals).
+fn stage_dir(base: &Path, batch: &str) -> Result<PathBuf, String> {
+    if batch.is_empty() || !batch.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err("invalid batch id".into());
+    }
+    Ok(base.join("staging").join(batch))
+}
+
+fn write_staged(base: &Path, batch: &str, n: u32, bytes: &[u8]) -> Result<PathBuf, String> {
+    let dir = stage_dir(base, batch)?;
+    fs::create_dir_all(&dir).map_err(err)?;
+    let path = dir.join(format!("{n}.bin"));
+    fs::write(&path, bytes).map_err(err)?;
+    Ok(path)
+}
+
+fn clear_staged(base: &Path, batch: &str) -> Result<(), String> {
+    match fs::remove_dir_all(stage_dir(base, batch)?) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(err(e)),
+        _ => Ok(()),
+    }
+}
+
+fn check_folders(paths: &[String]) -> Vec<bool> {
+    paths.iter().map(|p| Path::new(p).is_dir()).collect()
+}
+
+/// Writes one split output (raw body, headers `batch` and `n`) to the staging folder; returns its path.
+#[tauri::command]
+pub async fn stage_write(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("expected raw bytes".into()) };
+    let header = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).ok_or(format!("missing header {k}"));
+    let n: u32 = header("n")?.parse().map_err(err)?;
+    let path = write_staged(&data_dir(&app)?, header("batch")?, n, bytes)?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Removes a batch's staging folder (ours, so deleting for good is fine); missing is Ok.
+#[tauri::command]
+pub async fn stage_clear(app: AppHandle, batch: String) -> Result<(), String> {
+    clear_staged(&data_dir(&app)?, &batch)
+}
+
+#[tauri::command]
+pub async fn folders_exist(paths: Vec<String>) -> Vec<bool> {
+    check_folders(&paths)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,5 +380,36 @@ mod tests {
         ] {
             assert!(export_path(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn stage_dir_validates_batch_id() {
+        let base = Path::new("C:/data");
+        for bad in ["", "..\\x", "../x", "a/b", "a.b", "a b"] {
+            assert!(stage_dir(base, bad).is_err(), "{bad}");
+        }
+        assert_eq!(stage_dir(base, "b-1").unwrap(), base.join("staging").join("b-1"));
+    }
+
+    #[test]
+    fn staged_files_are_written_and_cleared() {
+        let base = tempfile::tempdir().unwrap();
+        let p = write_staged(base.path(), "b-1", 3, b"pdf").unwrap();
+        assert_eq!(fs::read(&p).unwrap(), b"pdf");
+        assert!(p.starts_with(base.path().join("staging").join("b-1")));
+        assert!(write_staged(base.path(), "..", 0, b"x").is_err());
+        clear_staged(base.path(), "b-1").unwrap();
+        assert!(!p.exists());
+        clear_staged(base.path(), "b-1").unwrap(); // missing is fine
+        assert!(clear_staged(base.path(), "..\\x").is_err());
+    }
+
+    #[test]
+    fn folders_exist_is_true_only_for_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("a.zip");
+        fs::write(&f, "x").unwrap();
+        let paths = [dir.path(), &f, &dir.path().join("nope")].map(|p| p.to_string_lossy().into_owned());
+        assert_eq!(check_folders(&paths), [true, false, false]);
     }
 }

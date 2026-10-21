@@ -40,6 +40,9 @@ pub fn run() {
             files::cancel_apply,
             files::recover_all,
             files::forget_batch,
+            files::stage_write,
+            files::stage_clear,
+            files::folders_exist,
             tour::tour_prepare,
             tour::tour_cleanup,
         ])
