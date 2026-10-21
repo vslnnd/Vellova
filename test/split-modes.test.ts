@@ -39,6 +39,22 @@ describe('evenBlocks', () => {
   });
 });
 
+describe('fix round 1', () => {
+  it('evenBlocks float ties', () => {
+    expect(evenBlocks(8, [P('a', 4), P('b', 9), P('c', 7), P('d', 4)])).toEqual([2, 3, 2, 1]);
+    expect(evenBlocks(2, [P('a', 0.1), P('b', 0.2), P('c', 0.1)])).toEqual([1, 1, 0]);
+  });
+  it('infinite weight counts as 0', () => {
+    expect(evenBlocks(4, [P('a', Infinity), P('b', 1)])).toEqual([0, 4]);
+  });
+  it('keepGroups deficit tie goes to earlier name', () => {
+    expect(keepGroups(['x', 'y', 'z', 'w'], [P('A'), P('B')]).person).toEqual([0, 1, 0, 1]);
+  });
+  it('keepGroups with no people', () => {
+    expect(keepGroups(['a', 'b'], [])).toEqual({ person: [-1, -1], groups: [], warnings: [] });
+  });
+});
+
 describe('keepGroups', () => {
   it('assigns whole groups', () => {
     const r = keepGroups(['a', 'a', 'a', 'b', 'b', 'c'], [P('A'), P('B')]);

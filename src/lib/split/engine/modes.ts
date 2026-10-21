@@ -3,6 +3,7 @@ import type { Param, Person } from '../../shared/types';
 export type ValueGroup = { key: string; rows: number[]; values: string[] };
 export type Assignment = { person: number[]; groups: number[]; warnings: string[] };
 
+const EPS = 1e-9;
 const norm = (s: string) => s.trim().toLowerCase();
 
 export function byValue(cells: string[], params: Param[]) {
@@ -27,17 +28,18 @@ export function byValue(cells: string[], params: Param[]) {
 }
 
 function weights(people: Person[]): number[] {
-  const w = people.map((p) => Math.max(0, p.weight || 0));
+  const w = people.map((p) => (Number.isFinite(p.weight) && p.weight > 0 ? p.weight : 0));
   return w.some((x) => x > 0) ? w : w.map(() => 1);
 }
 
 export function evenBlocks(n: number, people: Person[]): number[] {
   const w = weights(people);
   const total = w.reduce((a, b) => a + b, 0);
-  const exact = w.map((x) => (x / total) * n);
-  const sizes = exact.map(Math.floor);
+  const exact = w.map((x) => (x * n) / total);
+  const sizes = exact.map((e) => Math.floor(e + EPS));
   let left = n - sizes.reduce((a, b) => a + b, 0);
-  const order = exact.map((e, i) => ({ i, f: e - Math.floor(e) })).sort((a, b) => b.f - a.f || a.i - b.i);
+  const order = exact.map((e, i) => ({ i, f: e - sizes[i] }))
+    .sort((a, b) => (Math.abs(a.f - b.f) < EPS ? a.i - b.i : b.f - a.f));
   for (const { i } of order) {
     if (left-- <= 0) break;
     sizes[i]++;
@@ -46,12 +48,17 @@ export function evenBlocks(n: number, people: Person[]): number[] {
 }
 
 export function keepGroups(keys: string[], people: Person[]): Assignment {
+  if (!people.length) return { person: keys.map(() => -1), groups: [], warnings: [] };
   const w = weights(people);
   const total = w.reduce((a, b) => a + b, 0);
-  const target = w.map((x) => (x / total) * keys.length);
+  const target = w.map((x) => (x * keys.length) / total);
   const assigned = people.map(() => 0);
   const byKey = new Map<string, number[]>();
-  keys.forEach((k, i) => byKey.set(k, [...(byKey.get(k) ?? []), i]));
+  keys.forEach((k, i) => {
+    const a = byKey.get(k);
+    if (a) a.push(i);
+    else byKey.set(k, [i]);
+  });
   const order = [...byKey.entries()].map(([key, rows], first) => ({ key, rows, first }))
     .sort((a, b) => b.rows.length - a.rows.length || a.first - b.first);
   const person = new Array<number>(keys.length).fill(0);
@@ -62,7 +69,7 @@ export function keepGroups(keys: string[], people: Person[]): Assignment {
     for (let i = 1; i < people.length; i++) {
       if (target[i] - assigned[i] > target[best] - assigned[best]) best = i;
     }
-    if (g.rows.length > target[best]) {
+    if (g.rows.length > target[best] + EPS) {
       warnings.push(`"${g.key}" has ${g.rows.length} rows, more than ${people[best].name}'s share of ${Math.round(target[best])}.`);
     }
     for (const r of g.rows) person[r] = best;
