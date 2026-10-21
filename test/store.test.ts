@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  DEFAULT_SETTINGS, lastUndoable, loadJson, logToText, mergeBatch, parseLog, pruneLog, putBackBatch, withDefaults,
+  batchSummary, DEFAULT_SETTINGS, lastUndoable, loadJson, logToText, mergeBatch, normalizeProfiles, parseLog, pruneLog, putBackBatch, withDefaults,
   type DataIO, type LogEntry,
 } from '../src/lib/shared/store';
 import type { Batch } from '../src/lib/shared/types';
@@ -63,6 +63,22 @@ describe('settings defaults', () => {
     expect(withDefaults({}).split).toEqual({ archive: false, favourites: [], folder: '' });
     expect(withDefaults({ split: { archive: true } }).split).toEqual({ archive: true, favourites: [], folder: '' });
   });
+
+  it('checks every split setting by type', () => {
+    expect(withDefaults({ split: { archive: 'yes', favourites: ['a', 3, 'a', 'b'], folder: 7, extra: 1 } }).split)
+      .toEqual({ archive: false, favourites: ['a', 'b'], folder: '' });
+    expect(withDefaults({ split: { favourites: 'a', folder: 'C:\out' } }).split).toEqual({ archive: false, favourites: [], folder: 'C:\out' });
+    expect(withDefaults({ split: [] }).split).toEqual({ archive: false, favourites: [], folder: '' });
+  });
+});
+
+describe('profiles', () => {
+  it('loads split profiles as [] when missing, and checks each one', () => {
+    expect(normalizeProfiles({ rename: [] })).toEqual({ rename: [], split: [] });
+    const p = normalizeProfiles({ rename: [], split: [{ id: 'p', name: 'Q3', rules: { mode: 'rows' } }, { name: 'no id' }, 5] });
+    expect(p.split).toHaveLength(1);
+    expect(p.split[0]).toMatchObject({ id: 'p', name: 'Q3', desc: '', archiveFolder: null, rules: { mode: 'rows', rows: 1000 } });
+  });
 });
 
 describe('log', () => {
@@ -119,6 +135,25 @@ describe('history', () => {
     const now = [batch('b1', [{ from: 'a', to: 'A', ok: false, pending: true }]), batch('b2', []), batch('b0', [])];
     expect(putBackBatch(now, 'b1', old)).toEqual([old, now[1], now[2]]);
     expect(putBackBatch(now, 'b1', undefined).map((b) => b.id)).toEqual(['b2', 'b0']);
+  });
+
+  const split = (id: string, items: Batch['items']): Batch => batch(id, items, { tool: 'split', verb: 'created' });
+
+  it('counts archived split items as files and names them', () => {
+    const h = mergeBatch([], split('s1', [
+      { from: 'a', to: 'A1', ok: true }, { from: 'a', to: 'A2', ok: true }, { from: 'b', to: 'B1', ok: true },
+      { from: 'a', to: 'arch\a', ok: true, archived: true }, { from: 'b', to: 'B2', ok: false, reason: 'locked' },
+    ]));
+    expect(h[0].summary).toBe('4 files created · 1 archived · 1 failed');
+    expect(batchSummary(split('s2', [{ from: 'a', to: 'A1', ok: true }]))).toBe('1 file created');
+  });
+
+  it('merges split fixes by target, dropping earlier failures of the same source', () => {
+    let h = mergeBatch([], split('s1', [
+      { from: 'a', to: 'A1', ok: true }, { from: 'a', to: 'A2', ok: false, reason: 'locked' }, { from: 'b', to: 'B1', ok: false, reason: 'locked' },
+    ]));
+    h = mergeBatch(h, split('s1', [{ from: 'a', to: 'A2b', ok: true }, { from: 'c', to: 'B1', ok: true }]));
+    expect(h[0].items).toEqual([{ from: 'a', to: 'A1', ok: true }, { from: 'a', to: 'A2b', ok: true }, { from: 'c', to: 'B1', ok: true }]);
   });
 
   it('keeps the last 200 batches', () => {

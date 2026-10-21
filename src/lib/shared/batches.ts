@@ -33,7 +33,8 @@ export async function undoBatch(id: string): Promise<void> {
     b.undone = r.skipped.length === 0;
     save('history');
     send({ type: 'stop' });
-    const text = `${r.restored} ${r.restored === 1 ? 'name' : 'names'} restored${r.skipped.length ? ` · ${r.skipped.length} skipped` : ''}`;
+    const what = b.tool === 'split' ? `${r.restored === 1 ? 'change' : 'changes'} undone` : `${r.restored === 1 ? 'name' : 'names'} restored`;
+    const text = `${r.restored} ${what}${r.skipped.length ? ` · ${r.skipped.length} skipped` : ''}`;
     send({ type: 'restored', text });
     log({ level: 'info', tool: b.tool, message: `Undo: ${text}.` });
   } catch (e) {

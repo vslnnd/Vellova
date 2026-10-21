@@ -113,7 +113,7 @@ export function summary(items: PlanItem[], destination: Destination) {
 }
 
 /** ops.rs: the file reached its new name, but its journal line could not be written, so Undo can't reverse it. */
-const movedUnjournaled = (r?: OpResult) => !!r && !r.ok && r.code === 'internal' && /can't be undone/.test(r.message ?? '');
+export const movedUnjournaled = (r?: OpResult) => !!r && !r.ok && r.code === 'internal' && /can't be undone/.test(r.message ?? '');
 
 /**
  * Matches apply results to the items that ran. Cancelled items are neither done nor failed, so they stay listed.

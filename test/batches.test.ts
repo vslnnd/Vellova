@@ -32,3 +32,18 @@ describe('undoLast', () => {
     expect(m.undo).toHaveBeenCalledTimes(3);
   });
 });
+
+describe('undo text', () => {
+  it('says names restored for Rename and changes undone for Split', async () => {
+    const b = await import('../src/lib/shared/batches');
+    const i = await import('../src/lib/shell/islandState.svelte');
+    m.undo.mockResolvedValue({ restored: 3, skipped: [] });
+    b.recordBatch({ ...batch('r'), tool: 'rename' });
+    await b.undoBatch('r');
+    expect(i.island.transient?.text).toBe('3 names restored');
+    i.send({ type: 'clearTransient' });
+    b.recordBatch({ ...batch('s'), tool: 'split', verb: 'created' });
+    await b.undoBatch('s');
+    expect(i.island.transient?.text).toBe('3 changes undone');
+  });
+});

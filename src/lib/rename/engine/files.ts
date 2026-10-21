@@ -10,12 +10,12 @@ export const SUPPORTED = [PDF, ...COMPANIONS];
 export const pathKey = (p: string) => p.replace(/\//g, '\\').toLowerCase();
 
 /** Adds the supported files that aren't listed yet, keeping list order. */
-export function mergeFiles(list: FileInfo[], add: FileInfo[]): FileInfo[] {
+export function mergeFiles(list: FileInfo[], add: FileInfo[], supported = SUPPORTED): FileInfo[] {
   const seen = new Set(list.map((f) => pathKey(f.path)));
   const out = [...list];
   for (const f of add) {
     const key = pathKey(f.path);
-    if (seen.has(key) || !SUPPORTED.includes(extOf(f.path))) continue;
+    if (seen.has(key) || !supported.includes(extOf(f.path))) continue;
     seen.add(key);
     out.push(f);
   }

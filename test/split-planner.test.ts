@@ -50,6 +50,11 @@ describe('by value', () => {
     expect(it).toMatchObject({ id: Q, status: 'attention', reason: 'no-column', detail: 'This file has no column "Cost centre".', op: null });
     expect(run(r, { [Q]: g }, { columnFor: { [Q]: 'dept' } })).toHaveLength(1);
   });
+  it('waits for a column when none is chosen', () => {
+    const [it] = run(rules({ column: ' ' }), { [Q]: simple });
+    expect(it).toMatchObject({ id: Q, status: 'pending', detail: 'Choose the column to split by.', op: null });
+    expect(run(rules({ column: '' }), { [Q]: simple }, { columnFor: { [Q]: 'Cost centre' } })).toHaveLength(2);
+  });
   it('empty, pending, unreadable, skipped', () => {
     expect(run(rules(), { [Q]: grid([['Cost centre']]) })[0]).toMatchObject({ status: 'skipped', detail: 'No data rows.' });
     const p = planSplit({ files: [Q], reads: {}, rules: rules(), columnFor: {}, skipped: new Set(), existing: new Set(), date });

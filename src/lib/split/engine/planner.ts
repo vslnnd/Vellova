@@ -17,6 +17,7 @@ export type FileRead = { ok: true; grid: Grid } | { ok: false; reason: Reason; d
 export type SplitPlanInput = {
   files: string[]; reads: Record<string, FileRead | undefined>; rules: SplitRules;
   columnFor: Record<string, string>; skipped: Set<string>;
+  /** pathKeys of every file in every folder the plan can write to: the source folders or the chosen one, plus each subfolder it would use. */
   existing: Set<string>; date: Date;
 };
 type Vars = Partial<Record<'date' | 'file' | 'group' | 'person' | 'part' | 'sheet', string>>;
@@ -105,6 +106,7 @@ export function planSplit(input: SplitPlanInput): SplitItem[] {
       if (!data.length) return [fileItem(source, 'skipped', { detail: 'No data rows.' })];
       const needsColumn = rules.mode === 'value' || (rules.mode === 'people' && rules.assign === 'groups');
       const colName = input.columnFor[source] ?? rules.column;
+      if (needsColumn && !colName.trim()) return [fileItem(source, 'pending', { detail: 'Choose the column to split by.' })];
       const col = needsColumn ? findColumn(head.columns, colName) : undefined;
       if (needsColumn && !col) return [fileItem(source, 'attention', { reason: 'no-column', detail: `This file has no column "${colName}".` })];
       const cell = (i: number) => (col ? grid.rows[data[i]][col.index] ?? '' : '');

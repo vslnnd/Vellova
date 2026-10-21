@@ -1,7 +1,8 @@
-import type { Batch, RenameProfile, Settings } from './types';
+import { splitProfile } from '../split/engine/profile';
+import type { Batch, BatchItem, RenameProfile, Settings, SplitProfile } from './types';
 
 export type LogEntry = { t: number; level: 'error' | 'warn' | 'info'; tool: 'rename' | 'split' | 'app'; file?: string; message: string; detail?: string };
-export type ProfilesFile = { rename: RenameProfile[]; split: unknown[] };
+export type ProfilesFile = { rename: RenameProfile[]; split: SplitProfile[] };
 export type DataIO = {
   read(name: string): Promise<string | null>;
   write(name: string, text: string): Promise<void>;
@@ -30,9 +31,24 @@ export function withDefaults(v: unknown): Settings {
     ...s,
     updates: { ...DEFAULT_SETTINGS.updates, ...(isObj(s.updates) ? s.updates : {}) },
     rename: { ...DEFAULT_SETTINGS.rename, ...(isObj(s.rename) ? s.rename : {}) },
-    split: { ...DEFAULT_SETTINGS.split, ...(isObj(s.split) ? s.split : {}) },
+    split: splitSettings(s.split),
     tour: isObj(s.tour) && typeof s.tour.dir === 'string' ? tourMarker(s.tour) : null,
   };
+}
+
+/** Split settings field by field: anything of the wrong type falls back to its default. */
+function splitSettings(v: unknown): Settings['split'] {
+  const s = isObj(v) ? v : {};
+  return {
+    archive: typeof s.archive === 'boolean' ? s.archive : false,
+    favourites: Array.isArray(s.favourites) ? [...new Set(s.favourites.filter((f: unknown): f is string => typeof f === 'string'))] : [],
+    folder: typeof s.folder === 'string' ? s.folder : '',
+  };
+}
+
+/** A loaded profiles file: split profiles are checked one by one (a file from before Split has none). */
+export function normalizeProfiles(v: ProfilesFile | { rename: RenameProfile[]; split?: unknown }): ProfilesFile {
+  return { ...v, split: (Array.isArray(v.split) ? v.split : []).flatMap((p) => splitProfile(p) ?? []) };
 }
 
 /** A marker keeps `ended` only when it is a boolean. */
@@ -99,17 +115,25 @@ export function batchSummary(b: Batch): string {
   const ok = b.items.filter((i) => i.ok).length;
   const pending = b.items.filter((i) => i.pending).length;
   const failed = b.items.length - ok - pending;
-  return `${ok} ${ok === 1 ? 'file' : 'files'} ${b.verb}${failed ? ` · ${failed} failed` : ''}${pending ? ` · ${pending} unfinished` : ''}`;
+  const archived = b.items.filter((i) => i.ok && i.archived).length;
+  return `${ok} ${ok === 1 ? 'file' : 'files'} ${b.verb}${archived ? ` · ${archived} archived` : ''}${failed ? ` · ${failed} failed` : ''}${pending ? ` · ${pending} unfinished` : ''}`;
 }
 
-/** Puts `b` on top of the history. A batch with the same id (Apply fixes) is merged: later results win per source. */
+/**
+ * Puts `b` on top of the history. A batch with the same id (Apply fixes) is merged: later results win per source
+ * (Rename), or per target for Split, where a source's earlier failures also go once it has new results.
+ */
 export function mergeBatch(history: Batch[], b: Batch): Batch[] {
   const prev = history.find((h) => h.id === b.id);
+  const replaced = (i: BatchItem) =>
+    b.tool === 'split'
+      ? b.items.some((n) => n.to === i.to || (!i.ok && n.from === i.from))
+      : b.items.some((n) => n.from === i.from);
   const merged: Batch = prev
     ? {
         ...prev,
         time: b.time,
-        items: [...prev.items.filter((i) => !b.items.some((n) => n.from === i.from)), ...b.items],
+        items: [...prev.items.filter((i) => !replaced(i)), ...b.items],
         undoable: prev.undoable || b.undoable,
       }
     : { ...b };
