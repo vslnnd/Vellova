@@ -1,13 +1,9 @@
-import { companionData } from '../lib/rename/engine/companion';
+import { createHandler, type Msg } from './sheetHandler';
 
-type Req = { id: number; ext: string; bytes: Uint8Array };
-const post = (m: unknown) => (self as unknown as { postMessage(m: unknown): void }).postMessage(m);
+const handle = createHandler();
+const post = (m: unknown, t: Transferable[]) => (self as unknown as { postMessage(m: unknown, t: Transferable[]): void }).postMessage(m, t);
 
-self.onmessage = (e: MessageEvent<Req>) => {
-  const { id, ext, bytes } = e.data;
-  try {
-    post({ id, data: companionData(ext, bytes) });
-  } catch (err) {
-    post({ id, error: String((err as Error)?.message ?? err) });
-  }
+self.onmessage = async (e: MessageEvent<Msg>) => {
+  const r = await handle(e.data);
+  post(r, Array.isArray(r.data) ? (r.data as Uint8Array[]).map((b) => b.buffer) : []);
 };
