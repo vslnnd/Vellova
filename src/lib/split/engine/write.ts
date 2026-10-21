@@ -51,13 +51,16 @@ function sheetFromValues(name: string, rows: unknown[][], header: number, delimi
 }
 
 function summarySheet(wb: ExcelJS.Workbook, rows: SummaryRow[]) {
-  const ws = wb.addWorksheet('Summary');
+  const taken = new Set(wb.worksheets.map((w) => w.name.toLowerCase()));
+  let name = 'Summary';
+  for (let n = 2; taken.has(name.toLowerCase()); n++) name = `Summary (${n})`;
+  const ws = wb.addWorksheet(name);
   ws.addRow(['Person', 'Rows', 'Groups', 'Share %']).font = { bold: true };
   rows.forEach((r) => ws.addRow([r.person, r.rows, r.groups, r.share]));
 }
 
 /** srcRows are sheet row numbers (1-based) in output order; merges survive only when both ends are in the output. */
-function buildSheet(wb: ExcelJS.Workbook, src: ExcelJS.Worksheet, srcRows: number[], assigned?: string[]) {
+function buildSheet(wb: ExcelJS.Workbook, src: ExcelJS.Worksheet, merges: string[], srcRows: number[]) {
   const out = wb.addWorksheet(src.name);
   try {
     src.columns?.forEach((col, i) => {
@@ -71,13 +74,13 @@ function buildSheet(wb: ExcelJS.Workbook, src: ExcelJS.Worksheet, srcRows: numbe
     // files without column definitions
   }
   const map = new Map(srcRows.map((r, i) => [r, i + 1]));
-  for (const m of src.model.merges ?? []) {
+  for (const m of merges) {
     try {
       const x = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(m);
       if (!x) continue;
       const a = map.get(Number(x[2]));
       const b = map.get(Number(x[4]));
-      if (a && b) out.mergeCells(`${x[1]}${a}:${x[3]}${b}`);
+      if (a && b && b - a === Number(x[4]) - Number(x[2])) out.mergeCells(`${x[1]}${a}:${x[3]}${b}`);
     } catch {
       // an unmergeable range is skipped
     }
@@ -94,10 +97,20 @@ function csvBytes(rows: string[][], delimiter: string): Uint8Array {
 export async function writeOutputs(src: Source, req: WriteReq): Promise<Uint8Array[]> {
   const { header, format } = req;
   const grid = gridOf(src, req.sheet);
-  const sheetOf = (name: string) =>
-    src.kind === 'xlsx'
-      ? src.wb.worksheets.find((w) => w.name === name)!
-      : sheetFromValues(name, src.sheets.find((s) => s.name === name)!.rows, header, src.delimiter);
+  // each sheet and its merges are read once per call, not once per output
+  const cache = new Map<string, { ws: ExcelJS.Worksheet; merges: string[] }>();
+  const sheetOf = (name: string) => {
+    let e = cache.get(name);
+    if (!e) {
+      const ws =
+        src.kind === 'xlsx'
+          ? src.wb.worksheets.find((w) => w.name === name)!
+          : sheetFromValues(name, src.sheets.find((s) => s.name === name)!.rows, header, src.delimiter);
+      e = { ws, merges: [...(ws.model.merges ?? [])] };
+      cache.set(name, e);
+    }
+    return e;
+  };
   const summaryRows = (s: SummaryRow[]) => [['Person', 'Rows', 'Groups', 'Share %'], ...s.map((r) => [r.person, String(r.rows), String(r.groups), String(r.share)])];
   const result: Uint8Array[] = [];
 
@@ -107,6 +120,7 @@ export async function writeOutputs(src: Source, req: WriteReq): Promise<Uint8Arr
       if (spec.kind === 'summary') rows = summaryRows(spec.summary);
       else if (spec.kind === 'sheet') rows = gridOf(src, spec.sheet).rows;
       else {
+        if (spec.summary) throw new Error("A summary can't be written into a .csv output; plan it as its own file.");
         const idx = [...Array.from({ length: header + 1 }, (_, i) => i), ...spec.rows];
         rows = idx.map((r, i) => {
           const row = [...(grid.rows[r] ?? [])];
@@ -126,12 +140,12 @@ export async function writeOutputs(src: Source, req: WriteReq): Promise<Uint8Arr
     wb.modified = new Date();
     if (spec.kind === 'summary') summarySheet(wb, spec.summary);
     else if (spec.kind === 'sheet') {
-      const ws = sheetOf(spec.sheet);
-      buildSheet(wb, ws, Array.from({ length: ws.rowCount }, (_, i) => i + 1));
+      const { ws, merges } = sheetOf(spec.sheet);
+      buildSheet(wb, ws, merges, Array.from({ length: ws.rowCount }, (_, i) => i + 1));
     } else {
-      const ws = sheetOf(grid.sheet);
+      const { ws, merges } = sheetOf(grid.sheet);
       const idx = [...Array.from({ length: header + 1 }, (_, i) => i), ...spec.rows];
-      const out = buildSheet(wb, ws, idx.map((r) => r + 1));
+      const out = buildSheet(wb, ws, merges, idx.map((r) => r + 1));
       if (spec.assigned) {
         const col = ws.columnCount + 1;
         const h = out.getRow(header + 1).getCell(col);

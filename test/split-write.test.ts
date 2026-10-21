@@ -47,7 +47,7 @@ describe('writeOutputs xlsx source', () => {
     });
     expect((await read(both)).worksheets[0].model.merges).toEqual(['A3:A4']);
     expect((await read(one)).worksheets[0].model.merges).toEqual([]);
-    const [moved] = await writeOutputs(src, { ...o, outputs: [{ kind: 'rows', rows: [0 + 2, 3].map((r) => r) }] });
+    const [moved] = await writeOutputs(src, { ...o, outputs: [{ kind: 'rows', rows: [2, 3] }] });
     expect((await read(moved)).worksheets[0].model.merges).toEqual(['A2:A3']);
   });
 
@@ -106,5 +106,48 @@ describe('writeOutputs values source', () => {
     const src = await loadSource('.csv', fx('bom-semicolon.csv'));
     const [out] = await writeOutputs(src, { sheet: null, header: 0, format: 'csv', delimiter: ';', outputs: [{ kind: 'rows', rows: [1, 2] }] });
     expect(new TextDecoder().decode(out.slice(3))).toBe('ID;Name;Amount\r\n00123;Doe, Jane;1.234,56\r\n456;Test Person;78,90');
+  });
+});
+
+describe('writeOutputs guards', () => {
+  const mk = (merge: string, name = 'S') => {
+    const wb = new ExcelJS.Workbook();
+    const w = wb.addWorksheet(name);
+    w.addRows([['H1', 'H2'], ['a', 'x'], ['b', 'y'], ['c', 'z'], ['d', 'q']]);
+    w.mergeCells(merge);
+    return { kind: 'xlsx' as const, wb };
+  };
+  const merges = async (src: ReturnType<typeof mk>, rows: number[], header = 0) => {
+    const [o] = await writeOutputs(src, { ...base, header, outputs: [{ kind: 'rows', rows }] });
+    return (await read(o)).worksheets[0].model.merges;
+  };
+  it('drops a merge with a gap, keeps contiguous ones', async () => {
+    expect(await merges(mk('A2:A4'), [1, 3])).toEqual([]);
+    expect(await merges(mk('A2:A4'), [1, 2, 3])).toEqual(['A2:A4']);
+  });
+  it('keeps a header-crossing merge only when rows follow unbroken', async () => {
+    expect(await merges(mk('A1:A3'), [1, 2])).toEqual(['A1:A3']);
+    expect(await merges(mk('A1:A3'), [2])).toEqual([]);
+  });
+  it('picks a free Summary sheet name', async () => {
+    const src = mk('A2:A3', 'summary');
+    const [o] = await writeOutputs(src, { ...base, header: 0, outputs: [{ kind: 'rows', rows: [1], summary: people }] });
+    expect((await read(o)).worksheets.map((w) => w.name)).toEqual(['summary', 'Summary (2)']);
+  });
+  it('refuses a summary in a csv output', async () => {
+    await expect(
+      writeOutputs(mk('A2:A3'), { sheet: null, header: 0, format: 'csv', delimiter: ',', outputs: [{ kind: 'rows', rows: [1], summary: people }] }),
+    ).rejects.toThrow("A summary can't be written");
+  });
+  it('splits 20,000 rows into 20 outputs quickly', { timeout: 20000 }, async () => {
+    const rows = Array.from({ length: 20001 }, (_, r) => Array.from({ length: 10 }, (_, c) => (r === 0 ? `h${c}` : r * c)));
+    const wb = new ExcelJS.Workbook();
+    wb.addWorksheet('S').addRows(rows);
+    const outputs = Array.from({ length: 20 }, (_, i) => ({ kind: 'rows' as const, rows: Array.from({ length: 1000 }, (_, j) => 1 + i * 1000 + j) }));
+    for (const src of [{ kind: 'xlsx' as const, wb }, { kind: 'values' as const, sheets: [{ name: 'S', rows }] }]) {
+      const t = Date.now();
+      expect(await writeOutputs(src, { ...base, header: 0, outputs })).toHaveLength(20);
+      expect(Date.now() - t).toBeLessThan(5000);
+    }
   });
 });
