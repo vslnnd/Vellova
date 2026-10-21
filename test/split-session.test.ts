@@ -158,6 +158,44 @@ describe('split session', () => {
     expect(s.session.reads[A]).toEqual({ ok: false, reason: 'no-column', detail: 'This file has no sheet "Data".' });
   });
 
+  it('while a listed source has written outputs, a plain Apply joins that batch', async () => {
+    const C = 'C:\\in\\C.xlsx';
+    const s = await load([A]);
+    m.applyPlan.mockImplementationOnce(async (_b: string, ops: Op[]) => ops.map((o, i) => ({ i, ok: !o.to.endsWith('_A_Y.xlsx'), code: 'locked' })));
+    await s.runBatch();
+    const id = m.applyPlan.mock.calls[0][0];
+    await s.addPaths([C]);
+    await s.refresh();
+    await s.runBatch();
+    expect(m.applyPlan.mock.calls[1][0]).toBe(id);
+    expect(m.applyPlan.mock.calls[1][1].map((o: Op) => o.to)).toEqual([expect.stringMatching(/_C_X\.xlsx$/), expect.stringMatching(/_C_Y\.xlsx$/)]);
+    expect(s.plan.items.map((i) => [i.id, i.status])).toEqual([[`${A}|1`, 'attention']]);
+    await s.retry(`${A}|1`);
+    await s.refresh();
+    await s.applyFixes();
+    expect(m.applyPlan.mock.calls[2][0]).toBe(id);
+    expect(s.data.history.map((h) => h.id)).toEqual([id]);
+    expect(s.session.files).toEqual([]);
+  });
+
+  it('a run that cannot start keeps the failed archives of the batch before it', async () => {
+    const s = await load([A], {});
+    m.applyPlan.mockImplementation(async (_b: string, ops: Op[]) => ops.map((o, i) => ({ i, ok: o.kind !== 'rename', code: 'locked' })));
+    await s.runBatch();
+    s.session.rules.template = '{file}_{group}'; // re-plans: nothing written under these rules, so the next run is a new batch
+    m.applyPlan.mockRejectedValue('internal: another batch is running');
+    await s.runBatch();
+    expect(s.session.failures[`archive:${A}`]).toMatchObject({ reason: 'locked' });
+    expect(s.plan.items.map((i) => i.id)).toContain(`archive:${A}`);
+  });
+
+  it('records a missing archive folder once per source', async () => {
+    const s = await load([A, B], {});
+    m.foldersExist.mockResolvedValue([false]);
+    await s.runBatch();
+    expect(s.data.history[0].items.filter((i) => i.archived).map((i) => [i.from, i.to, i.ok])).toEqual([[A, `${ARCH}\\A.xlsx`, false], [B, `${ARCH}\\B.xlsx`, false]]);
+  });
+
   it('a rules change brings back outputs written under the old rules', async () => {
     const s = await load([A, B]);
     m.applyPlan.mockImplementationOnce(async (_b: string, ops: Op[]) => ops.map((o, i) => ({ i, ok: !o.to.endsWith('_B_Y.xlsx'), code: 'locked' })));

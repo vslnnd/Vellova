@@ -1,7 +1,7 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { recordBatch, undoRunning } from '../shared/batches';
 import { ipc, ipcReason, type OpResult } from '../shared/ipc';
-import { extOf, splitPath } from '../shared/names';
+import { extOf, join, splitPath } from '../shared/names';
 import { REASONS } from '../shared/reasons';
 import { data, flush, log, save } from '../shared/state.svelte';
 import { putBackBatch } from '../shared/store';
@@ -334,16 +334,16 @@ export async function runBatch(only?: string[]) {
   const outputs = all.filter((i) => i.op && !liveDone.has(i.id) && (pick ? pick.has(i.id) || pick.has(i.source) : i.status !== 'attention'));
   const archiveOnly = pick && batchLive() ? [...pick].filter((id) => id.startsWith(ARCHIVE) && session.failures[id]).map(sourceOf) : [];
   if (!outputs.length && !archiveOnly.length) return;
-  const last = pick && data.history.find((h) => h.id === session.batch);
-  const id = last && !last.undone ? last.id : crypto.randomUUID();
+  // Apply fixes joins the last batch, and so does a plain Apply while a listed source has outputs written in it
+  // (its `done` must stay valid); never a batch that was undone, whose journal is spent
+  const onList = new Set(session.files.map((f) => f.path));
+  const joins = batchLive() && (pick || [...liveDone].some((d) => onList.has(sourceOf(d))));
+  const last = joins ? data.history.find((h) => h.id === session.batch) : undefined;
+  const id = last ? last.id : crypto.randomUUID();
   session.busy = true;
   cancelled = false;
-  // `done` and failed archives belong to one batch; a new batch starts without them
-  if (id !== session.batch) {
-    const old = Object.keys(session.failures).filter((k) => k.startsWith(ARCHIVE));
-    for (const k of old) delete session.failures[k];
-    settle(old.map(sourceOf));
-  }
+  // `done` and failed archives belong to one batch; a new batch starts without them (the archives go once it has started)
+  const oldArchives = id !== session.batch ? Object.keys(session.failures).filter((k) => k.startsWith(ARCHIVE)) : [];
   if (id !== session.batch || session.doneKey !== planKey(id)) session.done = [];
   session.doneKey = planKey(id);
   send({ type: 'start', label: outputs.length ? 'Splitting' : 'Archiving', total: outputs.length || archiveOnly.length, cancellable: true });
@@ -425,6 +425,7 @@ export async function runBatch(only?: string[]) {
     } finally {
       if (stagedAny) await ipc.stageClear(id).catch((e) => log({ level: 'warn', tool: 'split', message: 'Staged files could not be removed.', detail: String(e) }));
     }
+    for (const k of oldArchives) delete session.failures[k];
     // 3. archive: sources whose outputs were all written (at least one), and archives being retried
     const folder = archiveFolder();
     const done = new Set(session.done);
@@ -442,7 +443,8 @@ export async function runBatch(only?: string[]) {
       if (!exists) {
         for (const s of toArchive) {
           fail(ARCHIVE + s, s, 'missing', 'The archive folder no longer exists.');
-          batch.push({ from: s, to: folder, ok: false, reason: 'missing', archived: true });
+          // one target per source, so History's merge keeps each failure
+          batch.push({ from: s, to: join(folder, splitPath(s).name), ok: false, reason: 'missing', archived: true });
         }
       } else {
         const moves = planArchive(toArchive, folder, new Set((await listed([folder])).map(pathKey)), new Date());
@@ -477,14 +479,14 @@ export async function runBatch(only?: string[]) {
   session.fixed = session.fixed.filter((f) => !ran.has(f) && !(f === sourceOf(f) && ranSources.has(f)) && !(f.startsWith(ARCHIVE) && archiveOnly.includes(sourceOf(f))));
   data.history = putBackBatch(data.history, id, prev);
   if (!batch.length) {
-    settle([...ranSources, ...archiveOnly]);
+    settle([...ranSources, ...archiveOnly, ...oldArchives.map(sourceOf)]);
     save('history');
     return void send({ type: 'stop' });
   }
   session.batch = id;
   const b = recordBatch({ ...meta, time: Date.now(), items: batch, undoable: batch.some((x) => x.ok), rerun });
   // after the batch is current and recorded, so its `done` outputs count
-  settle([...ranSources, ...archiveOnly]);
+  settle([...ranSources, ...archiveOnly, ...oldArchives.map(sourceOf)]);
   log({ level: 'info', tool: 'split', message: b.summary });
   send({ type: 'finish', text: b.summary, attention: plan.items.filter((i) => i.status === 'attention').length });
 }
