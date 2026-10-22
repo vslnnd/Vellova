@@ -7,11 +7,12 @@
   import Settings from './lib/panels/Settings.svelte';
   import { data } from './lib/shared/state.svelte';
   import Rename from './lib/rename/Rename.svelte';
-  import { cancelActivity } from './lib/rename/session.svelte';
+  import { cancelActivity as cancelRename } from './lib/rename/session.svelte';
   import Panel from './lib/shell/Panel.svelte';
   import { shortcut } from './lib/shell/shortcuts';
   import TitleBar from './lib/shell/TitleBar.svelte';
   import Split from './lib/split/Split.svelte';
+  import { cancelActivity as cancelSplit } from './lib/split/session.svelte';
   import Tour from './lib/tour/TourLayer.svelte'; // not Tour.svelte: on Windows it would shadow the tour.svelte(.ts) module
   import { current, tour, tourActive, undoTour } from './lib/tour/tour.svelte';
   import { restartToUpdate, scheduleUpdates } from './lib/updater';
@@ -20,6 +21,8 @@
   if (import.meta.env.PROD) scheduleUpdates(true);
 
   const closePanel = () => (ui.panel = null);
+  /** The island's Cancel stops what the tool on screen is doing. */
+  const cancel = () => (ui.tool === 'split' ? cancelSplit() : cancelRename());
 
   const inText = () => !!document.activeElement?.matches('input:not([type=checkbox]):not([type=radio]), textarea, select');
 
@@ -41,7 +44,7 @@
 <svelte:window {onkeydown} />
 
 <div class="app">
-  <TitleBar oncancel={cancelActivity} onundo={undo} onrestart={() => void restartToUpdate()} />
+  <TitleBar oncancel={cancel} onundo={undo} onrestart={() => void restartToUpdate()} />
   <main inert={!!ui.panel}>
     <div class="screen" class:on={ui.tool === 'rename'} inert={ui.tool !== 'rename'}>
       <Rename />
