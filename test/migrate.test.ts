@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SPLIT_RULES } from '../src/lib/split/engine/profile';
+import { planSplitifyImport, SPLITIFY_FILES } from '../src/lib/migrate/splitify';
 import { freshProfiles, importProfiles, isEmpty, mapHistory, mapProfiles, mapSettings, mergeImport, planImport } from '../src/lib/migrate/nomina';
 
 const PROFILES = [
@@ -121,5 +122,51 @@ describe('freshProfiles', () => {
   it('drops ids already held and ids repeated within the import', () => {
     const p = (id: string) => ({ id, name: id });
     expect(freshProfiles(['a'], [p('a'), p('b'), p('b'), p('c')]).map((x) => x.id)).toEqual(['b', 'c']);
+  });
+});
+
+describe('importing Splitify', () => {
+  const profiles = JSON.stringify([
+    { id: 'a', name: 'Cities', description: 'd', parameters: [{ value: 7, label: 'Leeds', payable: false }], archiveFolder: 'C:\\old' },
+    { id: 'b', name: 'Legacy', params: [{ value: 'y' }] },
+  ]);
+  const history = JSON.stringify([
+    { id: 'h1', timestamp: '2026-10-01T08:00:00.000Z', profileName: 'Cities', files: [{ name: 'a.xlsx', path: 'C:\\in\\a.xlsx' }], outputDir: 'C:\\out', totalCreated: 4 },
+    { id: 'h2', timestamp: 1791000000000, profileName: '\u2014 no profile \u2014', files: [], outputDir: 'C:\\out', totalCreated: 0 },
+    { id: 'h3', timestamp: 'nonsense', files: [] },
+    'junk',
+  ]);
+  const fav = JSON.stringify(['C:\\a', 5, 'C:\\b', 'C:\\a']);
+  const settings = JSON.stringify({ theme: 'light', checkUpdatesOnStartup: false, updateIntervalHours: 5, archiveOriginals: true });
+
+  it('names the four files', () => {
+    expect(SPLITIFY_FILES).toEqual(['Splitify\\splitify_profiles.json', 'Splitify\\splitify_history.json', 'Splitify\\splitify_favfolders.json', 'Splitify\\splitify_settings.json']);
+  });
+
+  it('maps profiles, history, favourites and settings', () => {
+    const plan = planSplitifyImport([profiles, history, fav, settings]);
+    expect(plan.profiles.map((p) => [p.id, p.rules.mode, p.rules.params])).toEqual([
+      ['splitify-a', 'value', [{ value: '7', label: 'Leeds', payable: false }]],
+      ['splitify-b', 'value', [{ value: 'y', label: '', payable: true }]],
+    ]);
+    expect(plan.history.map((b) => [b.id, b.tool, b.verb, b.summary, b.profile, b.undoable, b.rerun, b.items])).toEqual([
+      ['splitify-h2', 'split', 'created', '0 files created', undefined, false, undefined, []],
+      ['splitify-h1', 'split', 'created', '4 files created', 'Cities', false, undefined, [{ from: 'C:\\in\\a.xlsx', to: 'C:\\out', ok: true }]],
+    ]);
+    expect(plan.favourites).toEqual(['C:\\a', 'C:\\b']);
+    expect(plan.settings).toEqual({ theme: 'light', updates: { onStartup: false, everyHours: 6 }, split: { archive: true } });
+  });
+
+  it('missing, malformed or wrong-shaped files import nothing', () => {
+    const empty = { profiles: [], history: [], favourites: [], settings: {} };
+    expect(planSplitifyImport([null, null, null, null])).toEqual(empty);
+    expect(planSplitifyImport(['{oops', '{oops', '{oops', '{oops'])).toEqual(empty);
+    expect(planSplitifyImport(['{}', '{}', '{}', '[]'])).toEqual(empty);
+    expect(planSplitifyImport([null, null, null, JSON.stringify({ theme: 'blue', updateIntervalHours: 'x', archiveOriginals: 1 })]).settings).toEqual({});
+  });
+
+  it('maps update intervals to the nearest of 1, 6 and 24', () => {
+    const hours = (n: number) => planSplitifyImport([null, null, null, JSON.stringify({ updateIntervalHours: n })]).settings.updates?.everyHours;
+    expect([hours(1), hours(3), hours(4), hours(12), hours(16), hours(48)]).toEqual([1, 1, 6, 6, 24, 24]);
   });
 });
