@@ -24,7 +24,7 @@ function copyRow(src: ExcelJS.Row, dest: ExcelJS.Worksheet, n: number) {
   if (src.height) d.height = src.height;
   src.eachCell({ includeEmpty: true }, (s, col) => {
     const c = d.getCell(col);
-    if (s.type === ExcelJS.ValueType.Formula) c.value = { formula: s.formula, result: s.result } as ExcelJS.CellFormulaValue;
+    if (s.type === ExcelJS.ValueType.Formula) c.value = (s.result ?? null) as ExcelJS.CellValue;
     else if (s.type === ExcelJS.ValueType.RichText || s.type === ExcelJS.ValueType.Hyperlink) c.value = clone(s.value);
     else c.value = s.value;
     copyStyle(s, c);

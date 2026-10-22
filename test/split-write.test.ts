@@ -17,7 +17,7 @@ const people = [
 ];
 
 describe('writeOutputs xlsx source', () => {
-  it('keeps title block, styles, merges, widths, hidden, formats and formulas', async () => {
+  it('keeps title block, styles, merges, widths, hidden and formats; formulas become their values', async () => {
     const src = await loadSource('.xlsx', fx('formatted.xlsx'));
     const [out] = await writeOutputs(src, { ...base, outputs: [{ kind: 'rows', rows: [3, 4, 5] }] });
     const ws = (await read(out)).worksheets[0];
@@ -31,7 +31,7 @@ describe('writeOutputs xlsx source', () => {
     expect(ws.getCell('A3').font?.bold).toBe(true);
     expect(ws.getCell('A3').fill).toBeTruthy();
     expect(ws.getCell('D4').numFmt).toBe('#,##0.00');
-    expect(ws.getCell('F4').value).toMatchObject({ formula: 'D4*2', result: 200 });
+    expect(ws.getCell('F4').value).toBe(200);
   });
 
   it('keeps a data-block merge only when both ends are in the output', async () => {

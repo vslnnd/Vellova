@@ -24,7 +24,7 @@ GitHub Actions builds every installer from this repository. Updates are checked 
   - *By number of rows* or *Into equal parts:* fixed-size or evenly sized pieces.
   - *By sheet:* one file per sheet.
 - **Header row:** the first row by default, or pick another row from a grid of the file's first 15 rows. Rows above a manual header are a title block and are copied on top of every output. Columns are matched by header name in each file, so one setup works across several files.
-- **Formatting kept:** styles, merged cells, column widths, number formats and formulas carry over for `.xlsx` files. Output can be the same format as the input, always `.xlsx` or always `.csv`.
+- **Formatting kept:** styles, merged cells, column widths and number formats carry over for `.xlsx` files; formula cells keep their last calculated value. Output can be the same format as the input, always `.xlsx` or always `.csv`.
 - **Names and folders:** file names come from a template with `{date}`, `{file}`, `{group}`, `{person}`, `{part}` and `{sheet}`. Outputs go next to each source file, in a chosen folder or in a subfolder, and name clashes are handled as in Rename.
 - **Archive:** optionally move each fully split source file into an archive folder after the run. The folder must already exist.
 - **Undo:** every split run appears in History and can be undone. Files it replaced come back from the Recycle Bin.

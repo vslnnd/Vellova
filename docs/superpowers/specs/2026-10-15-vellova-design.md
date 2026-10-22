@@ -334,7 +334,7 @@ Unsigned apps can't register in the Windows 11 compact menu, so the entries appe
 4. **N equal parts:** sizes differ by at most one; the earlier parts are larger.
 5. **One file per sheet:** each worksheet becomes its own file. For .xlsx, sheet formatting is kept.
 
-Every data output repeats the header row and keeps column widths, hidden columns, cell styles and number formats. Merged cells are remapped when both ends land in the same output. This is a port of the Splitify 2.0.1 `copyRow` and `writeRegionFile` logic. Formulas are copied with their cached results.
+Every data output repeats the header row and keeps column widths, hidden columns, cell styles and number formats. Merged cells are remapped when both ends land in the same output. This is a port of the Splitify 2.0.1 `copyRow` and `writeRegionFile` logic. Formula cells are written as their last calculated value, not as formulas.
 
 ### Output
 
