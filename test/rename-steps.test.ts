@@ -92,7 +92,7 @@ describe('runSteps: sources and pairing values', () => {
   });
 
   it('value stays from the last pdf source; a list step never sets it', () => {
-    const lists = { 'C:\\l.xlsx': { ok: true as const, map: new Map([['dn-2026-00017', 'Acme']]) } };
+    const lists = { 'C:\\l.xlsx|Code|Name': { ok: true as const, map: new Map([['dn-2026-00017', 'Acme']]) } };
     const list: Step = { type: 'list', path: 'C:\\l.xlsx', match: 'Code', name: 'Name', against: 'value' };
     expect(runSteps([pdfValue('Invoice No.:', 'after'), list], ctx({ lists }))).toMatchObject({ ok: true, base: 'Acme', value: 'DN-2026-00017' });
   });
@@ -102,13 +102,13 @@ describe('runSteps: lists', () => {
   const list = (against: 'name' | 'value'): Step => ({ type: 'list', path: 'C:\\l.xlsx', match: 'Code', name: 'Name', against });
 
   it('looks the current name up, trimmed and case-insensitive', () => {
-    const lists = { 'C:\\l.xlsx': { ok: true as const, map: new Map([['scan 01', 'Acme']]) } };
+    const lists = { 'C:\\l.xlsx|Code|Name': { ok: true as const, map: new Map([['scan 01', 'Acme']]) } };
     expect(runSteps([list('name')], ctx({ lists }))).toMatchObject({ ok: true, base: 'Acme' });
     expect(runSteps([list('name')], ctx({ lists, base: ' SCAN 01 ' }))).toMatchObject({ ok: true, base: 'Acme' });
   });
 
   it('a name that is not listed is not-in-list', () => {
-    const lists = { 'C:\\l.xlsx': { ok: true as const, map: new Map([['other', 'Acme']]) } };
+    const lists = { 'C:\\l.xlsx|Code|Name': { ok: true as const, map: new Map([['other', 'Acme']]) } };
     expect(runSteps([list('name')], ctx({ lists }))).toMatchObject({ ok: false, reason: 'not-in-list' });
   });
 
@@ -117,10 +117,16 @@ describe('runSteps: lists', () => {
   });
 
   it('a list that could not be read reports its detail', () => {
-    const lists = { 'C:\\l.xlsx': { ok: false as const, detail: 'locked' } };
+    const lists = { 'C:\\l.xlsx|Code|Name': { ok: false as const, detail: 'locked' } };
     const r = runSteps([list('name')], ctx({ lists }));
     expect(r).toMatchObject({ ok: false, reason: 'not-in-list' });
     expect(!r.ok && r.detail).toContain('locked');
+  });
+
+  it('each column pair of one file has its own map', () => {
+    const lists = { 'C:\\l.xlsx|Code|Name': { ok: true as const, map: new Map([['scan 01', 'Acme']]) }, 'C:\\l.xlsx|Name|Tag': { ok: true as const, map: new Map([['acme', 'A1']]) } };
+    const tag: Step = { type: 'list', path: 'C:\\l.xlsx', match: 'Name', name: 'Tag', against: 'name' };
+    expect(runSteps([list('name'), tag], ctx({ lists }))).toMatchObject({ ok: true, base: 'A1' });
   });
 
   it('a list the session never read is internal', () => {

@@ -5,6 +5,9 @@ import type { Item } from './pdfItems';
 
 export type PdfText = { items: Item[]; title: string; created: string }; // created: yyyy-MM-dd or ''
 export type ListRead = { ok: true; map: Map<string, string> } | { ok: false; detail: string }; // key: trim().toLowerCase()
+
+/** Where StepCtx.lists keeps a list step's map: one per file and column pair. */
+export const listKey = (s: Extract<Step, { type: 'list' }>) => `${s.path}|${s.match}|${s.name}`;
 export type StepCtx = { base: string; pdf: PdfText | null; lists: Record<string, ListRead>; index: number; mtime: number; ctime: number; today: Date };
 export type Named = { ok: true; base: string; value: string | null; n: string; date: string } | { ok: false; reason: Reason; detail: string };
 
@@ -123,7 +126,7 @@ function apply(s: Step, st: State, ctx: StepCtx): Fail | null {
     case 'list': {
       const key = s.against === 'name' ? st.name : st.value;
       if (key === null) return fail('not-in-list', 'No value was found before this step.');
-      const list = ctx.lists[s.path];
+      const list = ctx.lists[listKey(s)];
       if (!list) return fail('internal', 'The list was not read.');
       if (!list.ok) return fail('not-in-list', list.detail);
       const to = list.map.get(key.trim().toLowerCase());

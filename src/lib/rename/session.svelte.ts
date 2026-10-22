@@ -8,6 +8,7 @@ import { REASONS } from '../shared/reasons';
 import { putBackBatch } from '../shared/store';
 import type { FileInfo, Reason, RenameProfile, Step } from '../shared/types';
 import { island, send } from '../shell/islandState.svelte';
+import type { Grid } from '../split/engine/grid';
 import { readGrid } from '../split/sheets';
 import { readCompanion } from './companions';
 import type { CompanionData } from './engine/companion';
@@ -16,7 +17,7 @@ import { pairCompanions } from './engine/pairing';
 import { classifyPdfError } from './engine/pdfItems';
 import { planRename, readResults } from './engine/planner';
 import { DEFAULT_RULES, matchNo, profileFromRules, rulesFromProfile, type RenameRules } from './engine/profile';
-import { formatDate, listMap, patternError, runSteps, type ListRead, type Named, type PdfText } from './engine/steps';
+import { formatDate, listKey, listMap, patternError, runSteps, type ListRead, type Named, type PdfText } from './engine/steps';
 import { readPdfText } from './pdf';
 
 export { REASONS };
@@ -160,21 +161,39 @@ const sheetError = (e: unknown) =>
     ? { reason: 'internal' as const, detail: String((e as Error).message) }
     : { reason: 'unreadable' as const, detail: `This file can't be read (${String((e as Error)?.message ?? e)}).` };
 
-/** The file of a list step; a failure becomes the reason shown on each PDF. */
-async function readList(s: Extract<Step, { type: 'list' }>, gen: number): Promise<ListRead> {
-  let bytes: Uint8Array;
-  try {
-    bytes = await ipc.readFile(s.path);
-  } catch (e) {
-    const r = ipcReason(e);
-    return { ok: false, detail: r.reason === 'missing' ? 'The list file is missing.' : r.reason === 'locked' ? 'The list file is open in another program.' : r.detail };
+/** List files read, per path, size and modified time (only the newest version of each path is kept). */
+const gridCache = new Map<string, Grid>();
+const MISSING_LIST = 'The list file is missing.';
+
+/** The map of a list step; a failure becomes the reason shown on each PDF. */
+async function readList(s: Extract<Step, { type: 'list' }>): Promise<ListRead> {
+  const f = (await ipc.listFiles([s.path], false)).find((x) => pathKey(x.path) === pathKey(s.path));
+  if (!f) return { ok: false, detail: MISSING_LIST };
+  const key = `list|${f.path}|${f.size}|${f.mtime}`;
+  let grid = gridCache.get(key);
+  if (!grid) {
+    let bytes: Uint8Array;
+    try {
+      bytes = await ipc.readFile(f.path);
+    } catch (e) {
+      const r = ipcReason(e);
+      return { ok: false, detail: r.reason === 'missing' ? MISSING_LIST : r.reason === 'locked' ? 'The list file is open in another program.' : r.detail };
+    }
+    try {
+      grid = await readGrid(key, extOf(f.path), bytes, null);
+    } catch (e) {
+      return { ok: false, detail: String((e as Error)?.message ?? e) };
+    }
+    for (const k of gridCache.keys()) if (k.startsWith(`list|${f.path}|`)) gridCache.delete(k);
+    gridCache.set(key, grid);
   }
-  try {
-    // ponytail: parsed again on every refresh (the worker key is per refresh); key it by size and mtime if lists get big
-    return listMap(await readGrid(`list|${s.path}|${gen}`, extOf(s.path), bytes, null), s.match, s.name);
-  } catch (e) {
-    return { ok: false, detail: String((e as Error)?.message ?? e) };
-  }
+  return listMap(grid, s.match, s.name);
+}
+
+/** Sets or clears `key` in `to` as it is in `from`. */
+function put<T>(to: Record<string, T>, from: Record<string, T>, key: string) {
+  if (key in from) to[key] = from[key];
+  else delete to[key];
 }
 
 let generation = 0;
@@ -215,15 +234,13 @@ export async function refresh() {
     const dest = rules.destination;
     const lists: Record<string, ListRead> = {};
     for (const s of wait ? [] : steps) {
-      if (s.type !== 'list' || s.path in lists) continue;
-      lists[s.path] = await readList(s, gen);
+      if (s.type !== 'list' || listKey(s) in lists) continue;
+      lists[listKey(s)] = await readList(s);
       if (stale()) return;
     }
     const names: Record<string, Named> = {};
     const failures: Record<string, Failure> = {};
     const sheets: { path: string; data: CompanionData }[] = [];
-    session.names = {};
-    session.readFailures = {};
     const today = new Date();
     const slots = slotsOf(files, today);
     let n = 0;
@@ -244,11 +261,15 @@ export async function refresh() {
         if (r.ok) sheets.push({ path: f.path, data: r.data });
         else failures[f.path] = r;
       }
-      session.names = { ...names };
-      session.readFailures = { ...failures };
+      // file by file, so the previous names stay shown until the new ones land
+      put(session.names, names, f.path);
+      put(session.readFailures, failures, f.path);
       n++;
       if (reading) send({ type: 'progress', done: n, total: files.length });
     }
+    // drops files that left the list
+    session.names = names;
+    session.readFailures = failures;
     // the target folders follow the names, so they are listed once every name is known
     const dirs =
       dest.mode === 'inplace'
@@ -447,7 +468,7 @@ export async function whenIdle(capMs = 30_000) {
 }
 
 export function useProfile(p: RenameProfile) {
-  session.rules = rulesFromProfile(p);
+  session.rules = rulesFromProfile($state.snapshot(p)); // a stored profile is a $state proxy, which structuredClone rejects
   session.profileId = p.id;
 }
 

@@ -26,7 +26,7 @@ const A = 'C:\\in\\a.pdf';
 const B = 'C:\\in\\b.pdf';
 const LIST = 'C:\\lists\\names.xlsx';
 const info = (path: string): FileInfo => ({ path, size: 1, mtime: 1, ctime: 1 });
-const grid: Grid = { sheets: [{ name: 'Sheet1', rows: 2 }], sheet: 'Sheet1', rows: [['File', 'Client'], ['a', 'Acme']], merges: [] };
+const grid: Grid = { sheets: [{ name: 'Sheet1', rows: 2 }], sheet: 'Sheet1', rows: [['File', 'Client', 'Code'], ['a', 'Acme', 'A1']], merges: [] };
 const listStep: Step = { type: 'list', path: LIST, match: 'File', name: 'Client', against: 'name' };
 
 async function load(steps: Step[], files = [A, B]) {
@@ -97,5 +97,36 @@ describe('rename session with steps', () => {
     await s.refresh();
     expect(m.listDir.mock.calls.at(-1)![0].sort()).toEqual(['D:\\out\\_-1', 'D:\\out\\_-2']);
     expect(s.plan.items[1].op?.to).toBe('D:\\out\\_-2\\Mine.pdf');
+  });
+
+  it('two list steps on one file use their own columns, and the file is parsed once per version', async () => {
+    const code: Step = { type: 'list', path: LIST, match: 'Client', name: 'Code', against: 'name' };
+    const s = await load([listStep, code]);
+    expect(s.plan.items[0].name).toBe('A1.pdf');
+    await s.refresh();
+    expect(m.readGrid).toHaveBeenCalledTimes(1);
+    expect(m.readGrid.mock.calls[0][0]).toBe(`list|${LIST}|1|1`);
+  });
+
+  it('keeps the names shown while it reads again', async () => {
+    m.readPdfText.mockResolvedValue({ items: [], title: 'T', created: '' });
+    const title: Step = { type: 'pdfPattern', preset: 'title', regex: '', occurrence: 1 };
+    const s = await load([title]);
+    s.session.rules.steps = [title, { type: 'addText', prefix: 'Y_', suffix: '' }];
+    const done = s.refresh(); // stops at its first await
+    expect(s.plan.items.map((i) => i.name)).toEqual(['T.pdf', 'T (1).pdf']);
+    await done;
+    expect(s.plan.items.map((i) => i.name)).toEqual(['Y_T.pdf', 'Y_T (1).pdf']);
+  });
+
+  it('loads a profile kept in app state', async () => {
+    const s = await import('../src/lib/rename/session.svelte');
+    const { data } = await import('../src/lib/shared/state.svelte');
+    data.profiles.rename.push({ id: 'p', name: 'P', desc: '', steps: [listStep], pair: false, destination: { mode: 'move', folder: 'D:\\out' }, conflict: 'skip' });
+    // in the app $state wraps it in a proxy, which structuredClone rejects (tests run Svelte's server build, which doesn't)
+    const p = data.profiles.rename[0];
+    s.useProfile({ ...p, steps: new Proxy(p.steps, {}) });
+    expect(s.session.rules).toEqual({ steps: [listStep], pair: false, destination: { mode: 'move', folder: 'D:\\out' }, conflict: 'skip' });
+    expect(s.session.profileId).toBe('p');
   });
 });
