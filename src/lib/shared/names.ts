@@ -26,3 +26,15 @@ export function sanitize(base: string): string {
   const s = base.replace(ILLEGAL, '_').trim();
   return s.replace(RESERVED, '$1_$2');
 }
+
+/**
+ * A folder template with `{value}`, `{n}` and `{date}` filled in. Each filled-in part is made safe on its own
+ * (`\ /` inside it become `_`), and a part that is empty or only dots becomes `_`, so a value can never name
+ * `..` and leave the chosen folder. The template's own text stays as typed.
+ */
+export function expandFolder(template: string, n: { value: string | null; n: string; date: string }): string {
+  return template.replace(/\{(value|n|date)\}/g, (_, k: 'value' | 'n' | 'date') => {
+    const part = sanitize(n[k] ?? '');
+    return /^\.*$/.test(part) ? '_' : part;
+  });
+}

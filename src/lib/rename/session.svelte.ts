@@ -14,11 +14,14 @@ import { mergeFiles, PDF, pathKey } from './engine/files';
 import { findValue } from './engine/findValue';
 import { pairCompanions } from './engine/pairing';
 import { classifyPdfError, type Item } from './engine/pdfItems';
-import { planRename, readResults, type ValueResult } from './engine/planner';
+import { planRename, readResults } from './engine/planner';
 import { DEFAULT_RULES, profileFromRules, rulesFromProfile, type RenameRules } from './engine/profile';
+import { formatDate, type Named } from './engine/steps';
 import { readPdfItems } from './pdf';
 
 export { REASONS };
+
+type ValueResult = { ok: true; value: string } | { ok: false; reason: Reason; detail: string };
 
 export const session = $state({
   files: [] as FileInfo[],
@@ -48,13 +51,26 @@ export const session = $state({
 const items = $derived.by(() => {
   const r = session.rules;
   const noKeyword = !r.keyword.trim();
+  // until the steps engine feeds the session: today's keyword value, framed by the prefix and suffix
+  const names: Record<string, Named> = {};
+  const unread: Record<string, { reason: Reason; detail: string }> = {};
+  const date = formatDate(new Date(), 'yyyy-MM-dd');
+  let pdfIndex = 0;
+  for (const f of session.files) {
+    const v = session.values[f.path];
+    if (extOf(f.path) !== PDF) {
+      if (v && !v.ok) unread[f.path] = { reason: v.reason, detail: v.detail };
+      continue;
+    }
+    if (v) names[f.path] = v.ok ? { ok: true, base: r.prefix + v.value + r.suffix, value: v.value, n: String(pdfIndex + 1), date } : { ok: false, reason: v.reason, detail: v.detail };
+    pdfIndex++;
+  }
   const planned = planRename({
     files: session.files.map((f) => f.path),
-    values: session.values,
+    names,
+    failures: unread,
     pairs: session.pairs && { ...session.pairs, ...session.manualPairs },
     pairEnabled: r.pair,
-    prefix: r.prefix,
-    suffix: r.suffix,
     destination: r.destination,
     conflict: r.conflict,
     existing: new Set(session.existing),

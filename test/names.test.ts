@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extOf, join, sanitize, splitExt, splitPath } from '../src/lib/shared/names';
+import { expandFolder, extOf, join, sanitize, splitExt, splitPath } from '../src/lib/shared/names';
 
 describe('names', () => {
   it('splits Windows and forward-slash paths', () => {
@@ -38,5 +38,17 @@ describe('names', () => {
 
   it('keeps a trailing dot when an extension follows (1.4.6 behaviour)', () => {
     expect(sanitize('No. 17.')).toBe('No. 17.');
+  });
+
+  it('expands {value}, {n} and {date} in a folder, each part made safe on its own', () => {
+    expect(expandFolder('D:\\{date}\\{value}', { value: 'a:b', n: '1', date: '2026-10-23' })).toBe('D:\\2026-10-23\\a_b');
+    expect(expandFolder('D:\\{date}\\{value}', { value: null, n: '1', date: '2026-10-23' })).toBe('D:\\2026-10-23\\_');
+    expect(expandFolder('D:\\{value}-{n}', { value: 'ACME/77', n: '003', date: '' })).toBe('D:\\ACME_77-003');
+    expect(expandFolder('D:\\out', { value: 'x', n: '1', date: '' })).toBe('D:\\out');
+  });
+
+  it('a folder part that is empty or only dots becomes "_"; the template text stays as typed', () => {
+    for (const value of ['', '  ', '.', '..', '...']) expect(expandFolder('D:\\{value}', { value, n: '1', date: '' })).toBe('D:\\_');
+    expect(expandFolder('D:\\a..b\\{value}', { value: '..\\x', n: '1', date: '' })).toBe('D:\\a..b\\.._x');
   });
 });

@@ -784,6 +784,22 @@ mod tests {
     }
 
     #[test]
+    fn a_rename_into_missing_folders_creates_them_and_undo_moves_it_back() {
+        let t = T::new();
+        let a = t.write("a.pdf", "A");
+        let to = s(&t.root.join("new").join("deeper").join("x.pdf"));
+        let r = t.apply(&[rn(&a, &to)]);
+        assert!(r[0].ok, "{r:?}");
+        assert_eq!(fs::read_to_string(&to).unwrap(), "A");
+        assert_eq!(t.names(), ["new"]);
+        let rep = t.undo();
+        assert_eq!(rep.restored, 1);
+        assert_eq!(t.read("a.pdf"), "A");
+        assert!(!Path::new(&to).exists());
+        assert!(t.root.join("new").join("deeper").is_dir()); // the created folders stay
+    }
+
+    #[test]
     fn copies_create_folders_and_undo_sends_them_to_the_bin() {
         let t = T::new();
         let a = t.write("a.pdf", "A");

@@ -1,20 +1,19 @@
-import { extOf, join, sanitize, splitExt, splitPath } from '../../shared/names';
+import { expandFolder, extOf, join, sanitize, splitExt, splitPath } from '../../shared/names';
 import type { OpResult } from '../../shared/ipc';
 import type { BatchItem, Conflict, Destination, Op, PlanItem, Reason, Status } from '../../shared/types';
 import { PDF, pathKey } from './files';
-
-export type ValueResult = { ok: true; value: string } | { ok: false; reason: Reason; detail: string };
+import type { Named } from './steps';
 
 export type PlanInput = {
   /** paths in list order; the order decides who gets " (1)" */
   files: string[];
-  /** PDF → value or why there is none (missing = still reading); unreadable companions too */
-  values: Record<string, ValueResult>;
+  /** PDF → its new name or why there is none (missing = still reading) */
+  names: Record<string, Named>;
+  /** companions that could not be read */
+  failures: Record<string, { reason: Reason; detail: string }>;
   /** companion → PDF; null while files are still being read */
   pairs: Record<string, string> | null;
   pairEnabled: boolean;
-  prefix: string;
-  suffix: string;
   destination: Destination;
   conflict: Conflict;
   /** pathKey of every entry in the target folders */
@@ -30,7 +29,7 @@ const item = (source: string, status: Status, extra: Partial<PlanItem> = {}): Pl
 export function planRename(input: PlanInput): PlanItem[] {
   // A name is free when its file moves away in this batch. Assume every file moves, then plan again with the
   // files that really do until nothing changes. A pass can only drop files, so this ends.
-  let leaving = new Set(input.destination.mode === 'inplace' ? input.files.map(pathKey) : []);
+  let leaving = new Set(input.destination.mode === 'copy' ? [] : input.files.map(pathKey));
   for (;;) {
     const items = planOnce(input, leaving);
     const next = new Set(items.filter((i) => i.op?.kind === 'rename').map((i) => pathKey(i.source)));
@@ -44,12 +43,11 @@ function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
   const used = new Set<string>();
   const sources = new Set(input.files.map(pathKey));
 
-  /** Gives `source` the first free name of `base`, `base (1)`, `base (2)`… in its target folder. */
-  const place = (source: string, base: string, status: Status): PlanItem => {
+  /** Gives `source` the first free name of `base`, `base (1)`, `base (2)`… in `dir`. */
+  const place = (source: string, base: string, status: Status, dir: string): PlanItem => {
     const ext = extOf(source);
     if (!base) return item(source, 'attention', { reason: 'no-value', detail: 'The new name would be empty.' });
-    if (dest.mode === 'copy' && !dest.folder) return item(source, 'pending', { name: base + ext, detail: 'Choose a folder to copy into.' });
-    const dir = dest.mode === 'copy' ? dest.folder : splitPath(source).dir;
+    if (dest.mode !== 'inplace' && !dest.folder) return item(source, 'pending', { name: base + ext, detail: `Choose a folder to ${dest.mode} into.` });
     let dup = false;
     for (let k = 0; ; k++) {
       const name = `${k ? `${base} (${k})` : base}${ext}`;
@@ -71,39 +69,44 @@ function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
     }
   };
 
+  /** Where a PDF goes. A typed name for a PDF without a value expands the folder as if the value were empty. */
+  const folderOf = (pdf: string, named?: Named) =>
+    dest.mode === 'inplace' ? splitPath(pdf).dir : expandFolder(dest.folder, named?.ok ? named : { value: null, n: '1', date: '' });
+
   const out = new Map<string, PlanItem>();
   // PDFs and typed names claim names first; companions then take their PDF's final name.
   for (const f of input.files) {
     if (input.skipped.has(f)) out.set(f, item(f, 'skipped'));
-    else if (f in input.overrides) out.set(f, place(f, sanitize(input.overrides[f]), 'ready'));
+    else if (f in input.overrides) out.set(f, place(f, sanitize(input.overrides[f]), 'ready', folderOf(f, input.names[f])));
     else if (extOf(f) === PDF) {
-      const v = input.values[f];
+      const v = input.names[f];
       if (!v) out.set(f, item(f, 'pending', { detail: 'Waiting for its value…' }));
       else if (!v.ok) out.set(f, item(f, 'attention', { reason: v.reason, detail: v.detail }));
-      else out.set(f, place(f, sanitize(input.prefix + v.value + input.suffix), 'ready'));
+      else out.set(f, place(f, sanitize(v.base), 'ready', folderOf(f, v)));
     }
   }
   for (const f of input.files) {
     if (out.has(f)) continue;
-    const v = input.values[f];
+    const v = input.failures[f];
     const pdf = input.pairs?.[f];
     const p = pdf ? out.get(pdf) : undefined;
     // A PDF that is skipped (or waiting for a folder) gives no final name to follow.
     const pdfName = p && (p.op || p.status === 'unchanged') ? p.name : undefined;
     if (!input.pairEnabled) out.set(f, item(f, 'unchanged', { detail: 'Pairing with PDFs is off.' }));
-    else if (v && !v.ok) out.set(f, item(f, 'attention', { reason: v.reason, detail: v.detail }));
+    else if (v) out.set(f, item(f, 'attention', { reason: v.reason, detail: v.detail }));
     else if (!input.pairs) out.set(f, item(f, 'pending', { detail: 'Waiting for the PDFs…' }));
     else if (!pdf) out.set(f, item(f, 'attention', { reason: 'no-match', detail: 'None of the PDF values appears in this file.' }));
     else if (p?.status === 'pending') out.set(f, item(f, 'pending', { detail: p.detail }));
     else if (!pdfName) out.set(f, item(f, 'skipped', { detail: 'Its PDF is not being renamed.' }));
-    else out.set(f, place(f, splitExt(pdfName).base, 'paired'));
+    // beside its PDF's final place; in place, where the companion itself is
+    else out.set(f, place(f, splitExt(pdfName).base, 'paired', splitPath(dest.mode === 'inplace' ? f : (p!.op?.to ?? p!.source)).dir));
   }
   return input.files.map((f) => out.get(f)!);
 }
 
 export function summary(items: PlanItem[], destination: Destination) {
   const ops = items.filter((i) => i.op).length;
-  const verb = destination.mode === 'copy' ? 'Copy' : 'Rename';
+  const verb = { inplace: 'Rename', copy: 'Copy', move: 'Move' }[destination.mode];
   return {
     ops,
     attention: items.filter((i) => i.status === 'attention').length,

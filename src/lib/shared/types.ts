@@ -1,6 +1,7 @@
 export type Position = 'after' | 'before' | 'above' | 'below';
 export type Conflict = 'add' | 'skip' | 'replace';
-export type Destination = { mode: 'inplace' } | { mode: 'copy'; folder: string };
+/** `folder` may hold {value}, {n} and {date}. */
+export type Destination = { mode: 'inplace' } | { mode: 'copy' | 'move'; folder: string };
 
 /** Why a file needs attention. Rust apply/read errors use missing | permission | locked | exists | internal. */
 export type Reason =
