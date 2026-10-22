@@ -38,7 +38,7 @@ export const splitifyProfiles = (text: string) => profilesOf(items(text));
 /** Where Splitify kept its data, relative to %APPDATA%. Order matters for planSplitifyImport. */
 export const SPLITIFY_FILES = ['Splitify\\splitify_profiles.json', 'Splitify\\splitify_history.json', 'Splitify\\splitify_favfolders.json', 'Splitify\\splitify_settings.json'];
 
-const NO_PROFILE = '— no profile —';
+const NO_PROFILE = '\u2014 no profile \u2014';
 const parse = (text: string | null): unknown => {
   try {
     return text ? JSON.parse(text) : null;
