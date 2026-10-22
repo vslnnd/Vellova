@@ -2,33 +2,35 @@ import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { recordBatch, undoLast, undoRunning } from '../shared/batches';
 import { ipc, ipcReason, type OpResult } from '../shared/ipc';
-import { extOf, splitPath } from '../shared/names';
+import { expandFolder, extOf, splitExt, splitPath } from '../shared/names';
 import { data, flush, log, save } from '../shared/state.svelte';
 import { REASONS } from '../shared/reasons';
 import { putBackBatch } from '../shared/store';
-import type { FileInfo, Reason, RenameProfile } from '../shared/types';
+import type { FileInfo, Reason, RenameProfile, Step } from '../shared/types';
 import { island, send } from '../shell/islandState.svelte';
+import { readGrid } from '../split/sheets';
 import { readCompanion } from './companions';
 import type { CompanionData } from './engine/companion';
 import { mergeFiles, PDF, pathKey } from './engine/files';
-import { findValue } from './engine/findValue';
 import { pairCompanions } from './engine/pairing';
-import { classifyPdfError, type Item } from './engine/pdfItems';
+import { classifyPdfError } from './engine/pdfItems';
 import { planRename, readResults } from './engine/planner';
-import { DEFAULT_RULES, profileFromRules, rulesFromProfile, type RenameRules } from './engine/profile';
-import { formatDate, type Named } from './engine/steps';
-import { readPdfItems } from './pdf';
+import { DEFAULT_RULES, matchNo, profileFromRules, rulesFromProfile, type RenameRules } from './engine/profile';
+import { formatDate, listMap, patternError, runSteps, type ListRead, type Named, type PdfText } from './engine/steps';
+import { readPdfText } from './pdf';
 
 export { REASONS };
 
-type ValueResult = { ok: true; value: string } | { ok: false; reason: Reason; detail: string };
+type Failure = { reason: Reason; detail: string };
 
 export const session = $state({
   files: [] as FileInfo[],
   rules: structuredClone(DEFAULT_RULES) as RenameRules,
   profileId: null as string | null,
-  /** per PDF: the value or why there is none; per companion: only read failures */
-  values: {} as Record<string, ValueResult>,
+  /** per PDF: its new name or why there is none (missing: not read yet) */
+  names: {} as Record<string, Named>,
+  /** companions that could not be read */
+  readFailures: {} as Record<string, Failure>,
   /** companion → PDF; null until the first read finishes (a re-read keeps the previous pairs until it is done) */
   pairs: null as Record<string, string> | null,
   /** companions paired by hand in Needs attention */
@@ -37,7 +39,7 @@ export const session = $state({
   overrides: {} as Record<string, string>,
   skipped: [] as string[],
   /** files whose operation failed when applied */
-  failures: {} as Record<string, { reason: Reason; detail: string }>,
+  failures: {} as Record<string, Failure>,
   /** files fixed in Needs attention, for Apply fixes */
   fixed: [] as string[],
   loading: false,
@@ -48,27 +50,37 @@ export const session = $state({
   batch: null as string | null,
 });
 
+const KEYWORD = 'Enter a keyword to find the value.';
+
+/** Why PDFs wait instead of being read: the first keyword is empty, or a custom pattern is broken. */
+function waitReason(steps: Step[]): string | null {
+  const value = steps.find((s) => s.type === 'pdfValue');
+  if (value && !value.keyword.trim()) return KEYWORD;
+  for (const s of steps) {
+    const e = patternError(s);
+    if (e) return e;
+  }
+  return null;
+}
+
+/** For the old screen until the step editor: the first value step's keyword is empty. */
+export const needsKeyword = () => waitReason(session.rules.steps) === KEYWORD;
+
+/** {n} and {date} of every PDF, so a PDF without a name (failed, or still reading) still expands its folder. */
+function slotsOf(files: FileInfo[], today: Date) {
+  const date = formatDate(today, 'yyyy-MM-dd');
+  const pdfs = files.filter((f) => extOf(f.path) === PDF);
+  return Object.fromEntries(pdfs.map((f, i) => [f.path, { n: String(i + 1), date }]));
+}
+
 const items = $derived.by(() => {
   const r = session.rules;
-  const noKeyword = !r.keyword.trim();
-  // until the steps engine feeds the session: today's keyword value, framed by the prefix and suffix
-  const names: Record<string, Named> = {};
-  const unread: Record<string, { reason: Reason; detail: string }> = {};
-  const date = formatDate(new Date(), 'yyyy-MM-dd');
-  let pdfIndex = 0;
-  for (const f of session.files) {
-    const v = session.values[f.path];
-    if (extOf(f.path) !== PDF) {
-      if (v && !v.ok) unread[f.path] = { reason: v.reason, detail: v.detail };
-      continue;
-    }
-    if (v) names[f.path] = v.ok ? { ok: true, base: r.prefix + v.value + r.suffix, value: v.value, n: String(pdfIndex + 1), date } : { ok: false, reason: v.reason, detail: v.detail };
-    pdfIndex++;
-  }
+  const wait = waitReason(r.steps);
   const planned = planRename({
     files: session.files.map((f) => f.path),
-    names,
-    failures: unread,
+    names: session.names,
+    failures: session.readFailures,
+    slots: slotsOf(session.files, new Date()),
     pairs: session.pairs && { ...session.pairs, ...session.manualPairs },
     pairEnabled: r.pair,
     destination: r.destination,
@@ -81,9 +93,9 @@ const items = $derived.by(() => {
     // a file whose operation failed keeps it (for Retry) but shows as attention
     const f = session.failures[it.source];
     if (f && it.op) return { ...it, status: 'attention' as const, reason: f.reason, detail: f.detail };
-    // without a keyword nothing is searched: PDFs, and companions looking for a PDF value, wait for one
-    if (noKeyword && ((it.status === 'pending' && extOf(it.source) === PDF) || it.reason === 'no-match')) {
-      return { ...it, status: 'pending' as const, reason: undefined, detail: 'Enter a keyword to find the value.' };
+    // without a keyword (or with a broken pattern) nothing is searched: PDFs, and companions looking for a PDF value, wait
+    if (wait && ((it.status === 'pending' && extOf(it.source) === PDF) || it.reason === 'no-match')) {
+      return { ...it, status: 'pending' as const, reason: undefined, detail: wait };
     }
     return it;
   });
@@ -97,7 +109,7 @@ export const plan = {
 };
 
 type Read<T> = { ok: true; data: T } | { ok: false; reason: Reason; detail: string };
-const pdfCache = new Map<string, Read<Item[]>>();
+const pdfCache = new Map<string, Read<PdfText>>();
 const sheetCache = new Map<string, Read<CompanionData>>();
 
 /** Forgets what was read from `path`, so the next refresh reads it again (Retry). */
@@ -148,6 +160,23 @@ const sheetError = (e: unknown) =>
     ? { reason: 'internal' as const, detail: String((e as Error).message) }
     : { reason: 'unreadable' as const, detail: `This file can't be read (${String((e as Error)?.message ?? e)}).` };
 
+/** The file of a list step; a failure becomes the reason shown on each PDF. */
+async function readList(s: Extract<Step, { type: 'list' }>, gen: number): Promise<ListRead> {
+  let bytes: Uint8Array;
+  try {
+    bytes = await ipc.readFile(s.path);
+  } catch (e) {
+    const r = ipcReason(e);
+    return { ok: false, detail: r.reason === 'missing' ? 'The list file is missing.' : r.reason === 'locked' ? 'The list file is open in another program.' : r.detail };
+  }
+  try {
+    // ponytail: parsed again on every refresh (the worker key is per refresh); key it by size and mtime if lists get big
+    return listMap(await readGrid(`list|${s.path}|${gen}`, extOf(s.path), bytes, null), s.match, s.name);
+  } catch (e) {
+    return { ok: false, detail: String((e as Error)?.message ?? e) };
+  }
+}
+
 let generation = 0;
 /** The island shows our "Reading" layer. Only the current read may update or stop it; a newer read takes it over. */
 let reading = false;
@@ -171,8 +200,10 @@ export async function refresh() {
   const stale = () => gen !== generation;
   const files = $state.snapshot(session.files);
   const rules = $state.snapshot(session.rules);
-  const keyword = rules.keyword.trim();
-  const occurrence = Math.max(1, Math.floor(rules.occurrence) || 1);
+  // a number input can leave a match number empty or fractional
+  const steps = rules.steps.map((s) => ('occurrence' in s ? { ...s, occurrence: matchNo(s.occurrence) } : s));
+  const wait = waitReason(steps);
+  const needPdf = steps.some((s) => s.type === 'pdfValue' || s.type === 'pdfPattern');
   session.loading = true;
   // the island only shows reading that takes a while
   const timer = setTimeout(() => {
@@ -182,37 +213,61 @@ export async function refresh() {
   }, 300);
   try {
     const dest = rules.destination;
-    const dirs = dest.mode === 'copy' ? [dest.folder].filter(Boolean) : [...new Set(files.map((f) => splitPath(f.path).dir))];
-    const listed = await ipc.listDir(dirs).catch(() => [] as string[]);
-    if (stale()) return;
-    // the listed files count too, even where their folder could not be read
-    session.existing = [...new Set([...listed, ...files.map((f) => f.path)].map(pathKey))];
-    const values: Record<string, ValueResult> = {};
+    const lists: Record<string, ListRead> = {};
+    for (const s of wait ? [] : steps) {
+      if (s.type !== 'list' || s.path in lists) continue;
+      lists[s.path] = await readList(s, gen);
+      if (stale()) return;
+    }
+    const names: Record<string, Named> = {};
+    const failures: Record<string, Failure> = {};
     const sheets: { path: string; data: CompanionData }[] = [];
-    session.values = {};
+    session.names = {};
+    session.readFailures = {};
+    const today = new Date();
+    const slots = slotsOf(files, today);
     let n = 0;
+    let index = 0;
     for (const f of files) {
       const ext = extOf(f.path); // lower-cased
       if (ext === PDF) {
-        if (keyword) {
-          const r = await readCached(pdfCache, f, readPdfItems, classifyPdfError);
+        if (!wait) {
+          const r = needPdf ? await readCached(pdfCache, f, readPdfText, classifyPdfError) : null;
           if (stale()) return;
-          values[f.path] = r.ok ? findValue(r.data, keyword, rules.position, occurrence) : r;
+          const base = splitExt(splitPath(f.path).name).base;
+          names[f.path] = !r || r.ok ? runSteps(steps, { base, pdf: r?.data ?? null, lists, index, mtime: f.mtime, ctime: f.ctime, today }) : r;
         }
+        index++;
       } else if (rules.pair) {
         const r = await readCached(sheetCache, f, (b) => readCompanion(ext, b), sheetError);
         if (stale()) return;
         if (r.ok) sheets.push({ path: f.path, data: r.data });
-        else values[f.path] = r;
+        else failures[f.path] = r;
       }
-      session.values = { ...values };
+      session.names = { ...names };
+      session.readFailures = { ...failures };
       n++;
       if (reading) send({ type: 'progress', done: n, total: files.length });
     }
+    // the target folders follow the names, so they are listed once every name is known
+    const dirs =
+      dest.mode === 'inplace'
+        ? files.map((f) => splitPath(f.path).dir)
+        : [
+            expandFolder(dest.folder, { value: null, n: '1', date: '' }), // a typed companion name without its PDF
+            ...Object.entries(slots).map(([p, slot]) => {
+              const v = names[p];
+              return expandFolder(dest.folder, v?.ok ? v : { value: null, ...slot });
+            }),
+          ];
+    const listed = await ipc.listDir([...new Set(dirs)].filter(Boolean)).catch(() => [] as string[]);
+    if (stale()) return;
+    // the listed files count too, even where their folder could not be read
+    session.existing = [...new Set([...listed, ...files.map((f) => f.path)].map(pathKey))];
     // an empty value would be found in every companion
     const pdfs = files.flatMap((f) => {
-      const v = values[f.path];
-      return extOf(f.path) === PDF && v?.ok && v.value.trim() ? [{ path: f.path, value: v.value }] : [];
+      const v = names[f.path];
+      return extOf(f.path) === PDF && v?.ok && v.value?.trim() ? [{ path: f.path, value: v.value }] : [];
     });
     session.pairs = pairCompanions(pdfs, sheets);
     session.dirty = false;
@@ -253,7 +308,7 @@ export async function pickFolder() {
 export async function pickCopyFolder() {
   const folder = await open({ directory: true, defaultPath: data.settings.rename.folder || undefined });
   if (!folder) return;
-  session.rules.destination = { mode: 'copy', folder };
+  session.rules.destination = { mode: session.rules.destination.mode === 'move' ? 'move' : 'copy', folder };
   data.settings.rename.folder = folder;
   save('settings');
 }
@@ -331,14 +386,15 @@ export async function runBatch(only?: string[]) {
   const pick = only && new Set(only);
   const run = plan.items.filter((i) => i.op && (pick ? pick.has(i.source) : i.status !== 'attention'));
   if (!run.length) return;
-  const copy = session.rules.destination.mode === 'copy';
+  const mode = session.rules.destination.mode;
+  const [label, verb] = { inplace: ['Renaming', 'renamed'], copy: ['Copying', 'copied'], move: ['Moving', 'moved'] }[mode];
   const last = pick && data.history.find((h) => h.id === session.batch);
   // fixes join the last batch, unless it was undone (its journal is spent)
   const id = last && !last.undone ? last.id : crypto.randomUUID();
   // the island is busy before the first await, so Undo can't start meanwhile
   session.busy = true;
-  send({ type: 'start', label: copy ? 'Copying' : 'Renaming', total: run.length, cancellable: true });
-  const meta = { id, tool: 'rename' as const, verb: copy ? 'copied' : 'renamed', profile: profileName() };
+  send({ type: 'start', label, total: run.length, cancellable: true });
+  const meta = { id, tool: 'rename' as const, verb, profile: profileName() };
   // what History held under this id before (Apply fixes), to put back if the run records nothing
   const prev = id === last?.id ? $state.snapshot(last) : undefined;
   // In History, saved, before anything moves: a batch the app never finished can still be undone.
@@ -367,7 +423,7 @@ export async function runBatch(only?: string[]) {
     log({ level: 'error', tool: 'rename', file: f.source, message: REASONS[f.reason].title, detail: f.message });
   }
   for (const w of warned) {
-    log({ level: 'warn', tool: 'rename', file: w.source, message: `${copy ? 'Copied' : 'Renamed'}, but Undo can't reverse this file.`, detail: w.message });
+    log({ level: 'warn', tool: 'rename', file: w.source, message: `${verb[0].toUpperCase() + verb.slice(1)}, but Undo can't reverse this file.`, detail: w.message });
   }
   forget(done);
   // the real results replace the pending record; cancelled files leave it

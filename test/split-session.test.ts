@@ -30,7 +30,7 @@ vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 const A = 'C:\\in\\A.xlsx';
 const B = 'C:\\in\\B.xlsx';
 const ARCH = 'C:\\archive';
-const info = (path: string): FileInfo => ({ path, size: 1, mtime: 1 });
+const info = (path: string): FileInfo => ({ path, size: 1, mtime: 1, ctime: 1 });
 const grid: Grid = { sheets: [{ name: 'Sheet1', rows: 3 }], sheet: 'Sheet1', rows: [['Name', 'Dept'], ['a', 'X'], ['b', 'Y']], merges: [] };
 const ok = (ops: Op[]) => ops.map((_, i) => ({ i, ok: true }));
 

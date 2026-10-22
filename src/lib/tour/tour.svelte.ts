@@ -53,7 +53,7 @@ export function view(): TourView {
   const batch = session.batch;
   return {
     samples: samples.length,
-    values: samples.filter((f) => session.values[f.path]?.ok).length,
+    values: samples.filter((f) => session.names[f.path]?.ok).length,
     reading: session.loading || session.dirty,
     named: !!noNumber && !!session.overrides[noNumber.path]?.trim(),
     batch,

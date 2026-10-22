@@ -233,7 +233,7 @@ describe('rename profiles with the new steps', () => {
   });
 
   it('profileFromRules stores a whole match number, at least 1', () => {
-    const occ = (occurrence: unknown) => profileFromRules({ ...DEFAULT_RULES, occurrence: occurrence as number }, 'P', 'p').steps[0];
+    const occ = (occurrence: unknown) => profileFromRules({ ...DEFAULT_RULES, steps: [{ type: 'pdfValue', keyword: '', position: 'after', occurrence: occurrence as number }] }, 'P', 'p').steps[0];
     expect([occ(null), occ(NaN), occ(1.5), occ(0), occ(4)]).toEqual([1, 1, 1, 1, 4].map((occurrence) => ({ type: 'pdfValue', keyword: '', position: 'after', occurrence })));
     expect(validStep(occ(null))).toBe(true);
   });

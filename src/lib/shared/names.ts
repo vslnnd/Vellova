@@ -35,6 +35,7 @@ export function sanitize(base: string): string {
  */
 export function expandFolder(template: string, n: { value: string | null; n: string; date: string }): string {
   return template.replace(/\{(value|n|date)\}/g, (_, k: 'value' | 'n' | 'date') => {
-    return sanitize(n[k] ?? '').replace(/[. ]+$/, '') || '_';
+    // sanitized again after the strip: `CON .` would otherwise end as the device name CON
+    return sanitize(sanitize(n[k] ?? '').replace(/[. ]+$/, '')) || '_';
   });
 }

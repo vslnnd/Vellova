@@ -1,46 +1,19 @@
-import type { Conflict, Destination, Position, RenameProfile, Step } from '../../shared/types';
+import type { Position, RenameProfile, Step } from '../../shared/types';
 
 export const POSITIONS: Position[] = ['after', 'before', 'above', 'below'];
 
-type ValueStep = Extract<Step, { type: 'pdfValue' }>;
-type TextStep = Extract<Step, { type: 'addText' }>;
-
-/** What the Rename screen edits; a profile stores the same as steps. */
-export type RenameRules = {
-  keyword: string;
-  position: Position;
-  occurrence: number;
-  prefix: string;
-  suffix: string;
-  pair: boolean;
-  destination: Destination;
-  conflict: Conflict;
-};
+/** What the Rename screen edits: a profile without its id, name and description. */
+export type RenameRules = Omit<RenameProfile, 'id' | 'name' | 'desc'>;
 
 export const DEFAULT_RULES: RenameRules = {
-  keyword: '',
-  position: 'after',
-  occurrence: 1,
-  prefix: '',
-  suffix: '',
+  steps: [{ type: 'pdfValue', keyword: '', position: 'after', occurrence: 1 }],
   pair: true,
   destination: { mode: 'inplace' },
   conflict: 'add',
 };
 
 export function rulesFromProfile(p: RenameProfile): RenameRules {
-  const value = p.steps.find((s): s is ValueStep => s.type === 'pdfValue');
-  const text = p.steps.find((s): s is TextStep => s.type === 'addText');
-  return {
-    keyword: value?.keyword ?? '',
-    position: value?.position ?? 'after',
-    occurrence: value?.occurrence ?? 1,
-    prefix: text?.prefix ?? '',
-    suffix: text?.suffix ?? '',
-    pair: p.pair,
-    destination: { ...p.destination },
-    conflict: p.conflict,
-  };
+  return { steps: structuredClone(p.steps), pair: p.pair, destination: { ...p.destination }, conflict: p.conflict };
 }
 
 /** A match number from a number input can be null, NaN or fractional: it is stored as a whole number, at least 1. */
@@ -50,18 +23,7 @@ export function matchNo(v: unknown): number {
 }
 
 export function profileFromRules(r: RenameRules, name: string, id: string, desc = ''): RenameProfile {
-  return {
-    id,
-    name,
-    desc,
-    steps: [
-      { type: 'pdfValue', keyword: r.keyword, position: r.position, occurrence: matchNo(r.occurrence) },
-      { type: 'addText', prefix: r.prefix, suffix: r.suffix },
-    ],
-    pair: r.pair,
-    destination: { ...r.destination },
-    conflict: r.conflict,
-  };
+  return { id, name, desc, steps: structuredClone(r.steps).map(healStep) as Step[], pair: r.pair, destination: { ...r.destination }, conflict: r.conflict };
 }
 
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -96,10 +58,10 @@ export function validStep(v: unknown): v is Step {
 }
 
 /** Stored match numbers that a number input once let through (null, 1.5) are healed rather than dropping the profile. */
-const healStep = (s: unknown) => {
+function healStep(s: unknown) {
   const o = obj(s);
   return o.type === 'pdfValue' || o.type === 'pdfPattern' ? { ...o, occurrence: matchNo(o.occurrence) } : s;
-};
+}
 
 /** One stored or imported profile: bad steps or a missing id or name drop it, missing options get defaults. */
 export function renameProfile(v: unknown): RenameProfile | null {
@@ -114,7 +76,7 @@ export function renameProfile(v: unknown): RenameProfile | null {
     desc: str(p.desc),
     steps,
     pair: typeof p.pair === 'boolean' ? p.pair : true,
-    destination: d.mode === 'copy' && str(d.folder) ? { mode: 'copy', folder: str(d.folder) } : { mode: 'inplace' },
+    destination: (d.mode === 'copy' || d.mode === 'move') && str(d.folder) ? { mode: d.mode, folder: str(d.folder) } : { mode: 'inplace' },
     conflict: p.conflict === 'skip' || p.conflict === 'replace' ? p.conflict : 'add',
   };
 }

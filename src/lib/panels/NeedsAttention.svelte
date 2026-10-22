@@ -10,7 +10,7 @@
   import type { PlanItem, Reason } from '../shared/types';
   import { island } from '../shell/islandState.svelte';
 
-  const TYPE: Reason[] = ['keyword-not-found', 'no-value', 'no-text'];
+  const TYPE: Reason[] = ['keyword-not-found', 'no-value', 'no-text', 'no-pattern', 'not-in-list'];
   const RETRY: Reason[] = ['locked', 'exists', 'internal'];
   const SHOW: Reason[] = ['permission', 'missing'];
 

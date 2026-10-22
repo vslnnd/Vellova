@@ -1,4 +1,4 @@
-import { DEFAULT_RULES, POSITIONS, profileFromRules, renameProfile } from '../rename/engine/profile';
+import { POSITIONS, renameProfile } from '../rename/engine/profile';
 import { splitProfile } from '../split/engine/profile';
 import { batchSummary, capHistory, isObj } from '../shared/store';
 import { profilesOf, splitifyItems } from './splitify';
@@ -23,14 +23,18 @@ function parse(text: string | null): unknown {
 export function mapProfiles(v: unknown): RenameProfile[] {
   return list(v)
     .filter((p) => str(p.name))
-    .map((p) =>
-      profileFromRules(
-        { ...DEFAULT_RULES, keyword: str(p.keyword), position: POSITIONS.includes(p.position) ? p.position : 'after', prefix: str(p.prefix), suffix: str(p.suffix), pair: true },
-        str(p.name),
-        `nomina-${str(p.id) || str(p.name)}`,
-        str(p.description),
-      ),
-    );
+    .map((p) => ({
+      id: `nomina-${str(p.id) || str(p.name)}`,
+      name: str(p.name),
+      desc: str(p.description),
+      steps: [
+        { type: 'pdfValue', keyword: str(p.keyword), position: POSITIONS.includes(p.position) ? p.position : 'after', occurrence: 1 },
+        { type: 'addText', prefix: str(p.prefix), suffix: str(p.suffix) },
+      ],
+      pair: true,
+      destination: { mode: 'inplace' },
+      conflict: 'add',
+    }));
 }
 
 function batch(id: string, time: number, items: BatchItem[], profile?: string): Batch {

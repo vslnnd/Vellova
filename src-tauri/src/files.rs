@@ -124,6 +124,8 @@ pub struct FileInfo {
     path: String,
     size: u64,
     mtime: u64,
+    /// created time; the modified time where the platform gives none
+    ctime: u64,
 }
 
 /// Raw bytes of a file, sent to the WebView without JSON encoding. Errors read "<code>: <message>".
@@ -147,7 +149,9 @@ fn walk(p: &Path, recursive: bool, top: bool, out: &mut Vec<FileInfo>) {
     if md.is_file() {
         let ours = p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(".~vellova-"));
         if !ours {
-            out.push(FileInfo { path: p.to_string_lossy().into_owned(), size: md.len(), mtime: ops::mtime_ms(&md) });
+            let mtime = ops::mtime_ms(&md);
+            let ctime = md.created().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(mtime, |d| d.as_millis() as u64);
+            out.push(FileInfo { path: p.to_string_lossy().into_owned(), size: md.len(), mtime, ctime });
         }
     } else if md.is_dir() && (top || recursive) {
         // ponytail: read_dir order (NTFS name order) is what Nomina 1.4.6 saw, and it decides who gets " (1)"
@@ -310,6 +314,16 @@ mod tests {
         assert!(Busy::take().unwrap_err().starts_with("internal:"));
         drop(first);
         assert!(Busy::take().is_ok());
+    }
+
+    #[test]
+    fn list_files_gives_a_created_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.pdf");
+        fs::write(&p, b"x").unwrap();
+        let files = tauri::async_runtime::block_on(list_files(vec![p.to_string_lossy().into_owned()], false));
+        assert_eq!(files.len(), 1);
+        assert!(files[0].ctime > 0);
     }
 
     #[test]

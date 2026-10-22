@@ -14,12 +14,12 @@
 
   let dragging = $state(false);
   const sum = $derived(summary(plan.items, session.rules.destination));
-  const copy = $derived(session.rules.destination.mode === 'copy');
+  const VERB = { inplace: 'renamed', copy: 'copied', move: 'moved' };
 
-  // re-read 150 ms after the files or the reading rules change; prefix, suffix and conflicts only re-plan
+  // re-read 150 ms after the files or the rules change (every step can change a name); conflicts only re-plan
   $effect(() => {
     const r = session.rules;
-    JSON.stringify([session.files, r.keyword, r.position, r.occurrence, r.pair, r.destination]);
+    JSON.stringify([session.files, r.steps, r.pair, r.destination]);
     invalidate(); // at once: Rename waits for the new values, not the old ones
     const t = setTimeout(() => void refresh(), 150);
     return () => clearTimeout(t);
@@ -58,7 +58,7 @@
   </div>
   <footer>
     <span class="count">
-      {#if session.files.length}{sum.ops} {sum.ops === 1 ? 'file' : 'files'} will be {copy ? 'copied' : 'renamed'}{:else}No files yet{/if}
+      {#if session.files.length}{sum.ops} {sum.ops === 1 ? 'file' : 'files'} will be {VERB[session.rules.destination.mode]}{:else}No files yet{/if}
     </span>
     {#if sum.attention}
       <button class="attn" onclick={() => (ui.panel = 'attention')}>{sum.attention} {sum.attention === 1 ? 'needs' : 'need'} attention</button>

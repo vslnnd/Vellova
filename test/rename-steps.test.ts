@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Item } from '../src/lib/rename/engine/pdfItems';
+import { pdfDate, type Item } from '../src/lib/rename/engine/pdfItems';
 import { formatDate, listMap, NEW_STEP, patternError, runSteps, type StepCtx } from '../src/lib/rename/engine/steps';
 import type { Grid } from '../src/lib/split/engine/grid';
 import type { Step } from '../src/lib/shared/types';
@@ -240,5 +240,11 @@ describe('NEW_STEP', () => {
     for (const [type, step] of Object.entries(NEW_STEP)) expect(step.type).toBe(type);
     expect(NEW_STEP.number).toEqual({ type: 'number', start: 1, step: 1, pad: 3, at: 'end', sep: '_' });
     expect(NEW_STEP.date).toEqual({ type: 'date', from: 'today', format: 'yyyy-MM-dd', at: 'start', sep: '_' });
+  });
+});
+
+describe('pdfDate', () => {
+  it('reads a PDF info date as yyyy-MM-dd, anything else as empty', () => {
+    expect([pdfDate("D:20260315120000+01'00'"), pdfDate('20251201'), pdfDate('March 2026'), pdfDate(undefined)]).toEqual(['2026-03-15', '2025-12-01', '', '']);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mergeFiles } from '../src/lib/rename/engine/files';
 import { planRename, readResults, summary, type PlanInput } from '../src/lib/rename/engine/planner';
-import { DEFAULT_RULES, profileFromRules, rulesFromProfile, type RenameRules } from '../src/lib/rename/engine/profile';
+import { DEFAULT_RULES, profileFromRules, renameProfile, rulesFromProfile, type RenameRules } from '../src/lib/rename/engine/profile';
 import type { Named } from '../src/lib/rename/engine/steps';
 import type { PlanItem } from '../src/lib/shared/types';
 
@@ -211,7 +211,7 @@ describe('planRename', () => {
 });
 
 describe('mergeFiles', () => {
-  const f = (path: string) => ({ path, size: 1, mtime: 1 });
+  const f = (path: string) => ({ path, size: 1, mtime: 1, ctime: 1 });
   it('lists a file once, however it was added, and keeps only supported types', () => {
     const list = mergeFiles([f('C:\\In\\a.pdf')], [f('c:/in/A.PDF'), f('C:\\In\\b.xlsx'), f('C:\\In\\notes.docx'), f('C:/In/b.xlsx')]);
     expect(list.map((x) => x.path)).toEqual(['C:\\In\\a.pdf', 'C:\\In\\b.xlsx']);
@@ -219,21 +219,21 @@ describe('mergeFiles', () => {
 });
 
 describe('profiles', () => {
-  it('rules round-trip through a profile', () => {
+  it('rules round-trip through a profile, move mode too', () => {
     const rules: RenameRules = {
-      ...DEFAULT_RULES, keyword: 'Invoice No.:', position: 'below', occurrence: 2, prefix: 'CN_',
-      destination: { mode: 'copy', folder: 'D:\\out' }, conflict: 'replace',
+      ...DEFAULT_RULES,
+      steps: [{ type: 'pdfValue', keyword: 'Invoice No.:', position: 'below', occurrence: 2 }, { type: 'addText', prefix: 'CN_', suffix: '' }],
+      destination: { mode: 'move', folder: 'D:\\out\\{value}' }, conflict: 'replace',
     };
     const p = profileFromRules(rules, 'Debit notes', 'p1');
-    expect(p.steps).toEqual([
-      { type: 'pdfValue', keyword: 'Invoice No.:', position: 'below', occurrence: 2 },
-      { type: 'addText', prefix: 'CN_', suffix: '' },
-    ]);
+    expect(p.steps).toEqual(rules.steps);
+    expect(p.steps).not.toBe(rules.steps);
+    expect(renameProfile(p)).toEqual(p);
     expect(rulesFromProfile(p)).toEqual(rules);
   });
 
-  it('a profile without steps gives the defaults', () => {
-    expect(rulesFromProfile({ id: 'x', name: 'x', desc: '', steps: [], pair: true, destination: { mode: 'inplace' }, conflict: 'add' })).toEqual(DEFAULT_RULES);
+  it('a profile without steps keeps none', () => {
+    expect(rulesFromProfile({ id: 'x', name: 'x', desc: '', steps: [], pair: true, destination: { mode: 'inplace' }, conflict: 'add' })).toEqual({ ...DEFAULT_RULES, steps: [] });
   });
 });
 

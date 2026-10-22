@@ -21,6 +21,8 @@ export type PlanInput = {
   /** path → name typed in the preview, without extension */
   overrides: Record<string, string>;
   skipped: Set<string>;
+  /** PDF → its {n} and {date}, used for a PDF without a name (failed or still reading) */
+  slots?: Record<string, { n: string; date: string }>;
 };
 
 const item = (source: string, status: Status, extra: Partial<PlanItem> = {}): PlanItem => ({ id: source, source, op: null, status, ...extra });
@@ -71,7 +73,7 @@ function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
 
   /** Where a PDF or a typed name goes. Without a value (nothing to follow) the folder is expanded as if the value were empty. */
   const folderOf = (file: string, named?: Named) =>
-    dest.mode === 'inplace' ? splitPath(file).dir : expandFolder(dest.folder, named?.ok ? named : { value: null, n: '1', date: '' });
+    dest.mode === 'inplace' ? splitPath(file).dir : expandFolder(dest.folder, named?.ok ? named : { value: null, n: '1', date: '', ...input.slots?.[file] });
 
   const out = new Map<string, PlanItem>();
   // PDFs and typed names claim names first; companions then take their PDF's final name.

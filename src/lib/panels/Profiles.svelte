@@ -2,7 +2,6 @@
   import { ask, open, save as saveDialog } from '@tauri-apps/plugin-dialog';
   import { ui } from '../app.svelte';
   import { freshProfiles, importProfiles } from '../migrate/nomina';
-  import { rulesFromProfile } from '../rename/engine/profile';
   import { pathKey } from '../rename/engine/files';
   import { useProfile } from '../rename/session.svelte';
   import { ipc } from '../shared/ipc';
@@ -19,9 +18,9 @@
   const clean = (e: unknown) => String(e).replace(/^[a-z]+: /, '');
 
   function describe(p: RenameProfile) {
-    const r = rulesFromProfile(p);
-    const text = r.prefix || r.suffix ? ` · ${r.prefix}value${r.suffix}` : '';
-    return `${r.keyword || 'no keyword'} · ${r.position}${text}${r.destination.mode === 'copy' ? ' · copy to folder' : ''}`;
+    const [s] = p.steps;
+    const steps = s?.type === 'pdfValue' ? `${s.keyword || 'no keyword'} · ${s.position}` : `${p.steps.length} steps`;
+    return `${steps}${p.destination.mode === 'inplace' ? '' : ` · ${p.destination.mode} to folder`}`;
   }
   function describeSplit(p: SplitProfile) {
     const r = p.rules;

@@ -37,3 +37,9 @@ export function classifyPdfError(e: unknown): { reason: 'unreadable' | 'internal
   }
   return { reason: 'internal', detail: String(err?.message ?? e) };
 }
+
+/** A PDF date (`D:YYYYMMDD...`) as yyyy-MM-dd, or '' when it isn't one. */
+export function pdfDate(v: unknown): string {
+  const m = typeof v === 'string' ? /^(?:D:)?(\d{4})(\d{2})(\d{2})/.exec(v) : null;
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+}

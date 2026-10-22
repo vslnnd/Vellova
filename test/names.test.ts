@@ -54,4 +54,8 @@ describe('names', () => {
     for (const value of ['', '  ', '.', '..', '...', '. .']) expect(expandFolder('D:\\{value}', { value, n: '1', date: '' })).toBe('D:\\_');
     expect(expandFolder('D:\\a..b\\{value}', { value: '..\\x', n: '1', date: '' })).toBe('D:\\a..b\\.._x');
   });
+
+  it('checks for a device name after the strip', () => {
+    expect(['CON .', 'con.', 'NUL '].map((value) => expandFolder('D:\\{value}', { value, n: '1', date: '' }))).toEqual(['D:\\CON_', 'D:\\con_', 'D:\\NUL_']);
+  });
 });

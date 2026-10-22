@@ -1,7 +1,7 @@
 <script lang="ts">
   import { extOf, splitExt, splitPath } from '../shared/names';
   import type { PlanItem, Status } from '../shared/types';
-  import { clearFiles, pickFiles, pickFolder, plan, refresh, removeFile, session, setName, skip } from './session.svelte';
+  import { clearFiles, needsKeyword, pickFiles, pickFolder, plan, refresh, removeFile, session, setName, skip } from './session.svelte';
   import { tourRow } from '../tour/tour.svelte';
 
   const PILL: Record<Status, [string, string]> = {
@@ -31,7 +31,7 @@
     <button class="btn small" onclick={() => void pickFolder()}>Add folder</button>
     <button class="btn small" onclick={clearFiles}>Clear</button>
   </div>
-  {#if !session.rules.keyword.trim()}
+  {#if needsKeyword()}
     <p class="hint banner">Type the keyword that comes before the value to see the new names.</p>
   {/if}
   <ul data-tour="preview">

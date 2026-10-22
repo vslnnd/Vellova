@@ -19,7 +19,7 @@ vi.mock('../src/lib/shared/ipc', () => ({
   },
   ipcReason: () => ({ reason: 'unreadable', detail: '' }),
 }));
-vi.mock('../src/lib/rename/pdf', () => ({ readPdfItems: async () => [] }));
+vi.mock('../src/lib/rename/pdf', () => ({ readPdfText: async () => ({ items: [], title: '', created: '' }) }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: async () => null }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 

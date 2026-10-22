@@ -25,7 +25,7 @@ export type Status = 'ready' | 'paired' | 'duplicate' | 'unchanged' | 'attention
 /** One preview row. `name` is the new file name; `op` is null when nothing will happen. */
 export type PlanItem = { id: string; source: string; op: Op | null; status: Status; name?: string; reason?: Reason; detail?: string };
 
-export type FileInfo = { path: string; size: number; mtime: number };
+export type FileInfo = { path: string; size: number; mtime: number; ctime: number };
 
 export type Step =
   | { type: 'pdfValue'; keyword: string; position: Position; occurrence: number }

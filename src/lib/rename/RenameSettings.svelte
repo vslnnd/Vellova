@@ -6,6 +6,13 @@
   const POSITIONS: [Position, string][] = [['after', 'After'], ['before', 'Before'], ['below', 'Below'], ['above', 'Above']];
   const CONFLICTS: [Conflict, string][] = [['add', 'Add (1)'], ['skip', 'Skip'], ['replace', 'Replace']];
   const rules = $derived(session.rules);
+  // until the step editor: the first step when it is a value step, and the first add text step
+  const value = $derived(rules.steps[0]?.type === 'pdfValue' ? rules.steps[0] : null);
+  const text = $derived(rules.steps.find((s) => s.type === 'addText'));
+  function setText(k: 'prefix' | 'suffix', v: string) {
+    if (text) text[k] = v;
+    else session.rules.steps.push({ type: 'addText', prefix: '', suffix: '', [k]: v });
+  }
   const current = $derived(data.profiles.rename.find((p) => p.id === session.profileId));
   let naming = $state(false);
   let newName = $state('');
@@ -44,26 +51,28 @@
     </div>
   </div>
 
-  <div class="card">
-    <h3>Value from PDF</h3>
-    <label class="label" for="rn-kw">Keyword</label>
-    <input id="rn-kw" data-tour="keyword" class="field mono" placeholder="Invoice No.:" spellcheck="false" bind:value={session.rules.keyword} />
-    <span class="label" id="rn-pos">The value is … the keyword</span>
-    <div class="seg" role="group" aria-labelledby="rn-pos" data-tour="position">
-      {#each POSITIONS as [v, label] (v)}
-        <button aria-pressed={rules.position === v} onclick={() => (session.rules.position = v)}>{label}</button>
-      {/each}
+  {#if value}
+    <div class="card">
+      <h3>Value from PDF</h3>
+      <label class="label" for="rn-kw">Keyword</label>
+      <input id="rn-kw" data-tour="keyword" class="field mono" placeholder="Invoice No.:" spellcheck="false" bind:value={value.keyword} />
+      <span class="label" id="rn-pos">The value is … the keyword</span>
+      <div class="seg" role="group" aria-labelledby="rn-pos" data-tour="position">
+        {#each POSITIONS as [v, label] (v)}
+          <button aria-pressed={value.position === v} onclick={() => (value.position = v)}>{label}</button>
+        {/each}
+      </div>
+      <label class="inline">Use match number <input class="field num" type="number" min="1" max="99" bind:value={value.occurrence} /></label>
     </div>
-    <label class="inline">Use match number <input class="field num" type="number" min="1" max="99" bind:value={session.rules.occurrence} /></label>
-  </div>
+  {/if}
 
   <div class="card">
     <h3>Add text</h3>
     <div class="two">
-      <label class="label">Before the value <input class="field mono" spellcheck="false" placeholder="CN_" bind:value={session.rules.prefix} /></label>
-      <label class="label">After the value <input class="field mono" spellcheck="false" placeholder="_final" bind:value={session.rules.suffix} /></label>
+      <label class="label">Before the value <input class="field mono" spellcheck="false" placeholder="CN_" value={text?.prefix ?? ''} oninput={(e) => setText('prefix', e.currentTarget.value)} /></label>
+      <label class="label">After the value <input class="field mono" spellcheck="false" placeholder="_final" value={text?.suffix ?? ''} oninput={(e) => setText('suffix', e.currentTarget.value)} /></label>
     </div>
-    <p class="hint mono">{rules.prefix}<span class="v">value</span>{rules.suffix}.pdf</p>
+    <p class="hint mono">{text?.prefix}<span class="v">value</span>{text?.suffix}.pdf</p>
   </div>
 
   <div class="card">
