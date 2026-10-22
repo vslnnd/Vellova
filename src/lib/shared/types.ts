@@ -10,6 +10,8 @@ export type Reason =
   | 'unreadable'
   | 'no-match'
   | 'no-column'
+  | 'no-pattern'
+  | 'not-in-list'
   | 'exists'
   | 'locked'
   | 'permission'
@@ -26,7 +28,15 @@ export type FileInfo = { path: string; size: number; mtime: number };
 
 export type Step =
   | { type: 'pdfValue'; keyword: string; position: Position; occurrence: number }
-  | { type: 'addText'; prefix: string; suffix: string };
+  | { type: 'pdfPattern'; preset: 'invoice' | 'date' | 'custom' | 'title' | 'created'; regex: string; occurrence: number }
+  | { type: 'list'; path: string; match: string; name: string; against: 'name' | 'value' } // match/name: header names in row 1
+  | { type: 'addText'; prefix: string; suffix: string; insert?: { text: string; at: number } } // at: 0 = before the first character
+  | { type: 'replace'; find: string; with: string; regex: boolean; matchCase: boolean; all: boolean }
+  | { type: 'remove'; what: 'range' | 'digits' | 'between'; from: number; to: number; start: string; end: string } // from/to: 1-based, inclusive
+  | { type: 'trim' }
+  | { type: 'case'; to: 'upper' | 'lower' | 'title' | 'sentence' }
+  | { type: 'number'; start: number; step: number; pad: number; at: 'start' | 'end'; sep: string }
+  | { type: 'date'; from: 'today' | 'modified' | 'created'; format: string; at: 'start' | 'end'; sep: string };
 
 export type RenameProfile = {
   id: string;

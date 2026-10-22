@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SPLIT_RULES } from '../src/lib/split/engine/profile';
 import { planSplitifyImport, SPLITIFY_FILES } from '../src/lib/migrate/splitify';
 import { freshProfiles, importProfiles, isEmpty, mapHistory, mapProfiles, mapSettings, mergeImport, planImport } from '../src/lib/migrate/nomina';
+import { renameProfile, validStep } from '../src/lib/rename/engine/profile';
+import { NEW_STEP } from '../src/lib/rename/engine/steps';
+import { normalizeProfiles } from '../src/lib/shared/store';
 
 const PROFILES = [
   { id: 'p_1', name: 'Debit notes', keyword: 'Invoice No.:', position: 'below', prefix: 'CN_', suffix: '', description: 'monthly' },
@@ -168,5 +171,70 @@ describe('importing Splitify', () => {
   it('maps update intervals to the nearest of 1, 6 and 24', () => {
     const hours = (n: number) => planSplitifyImport([null, null, null, JSON.stringify({ updateIntervalHours: n })]).settings.updates?.everyHours;
     expect([hours(1), hours(3), hours(4), hours(12), hours(16), hours(48)]).toEqual([1, 1, 6, 6, 24, 24]);
+  });
+});
+
+describe('rename profiles with the new steps', () => {
+  const profile = (steps: unknown[], id = 'p') => ({ id, name: 'P', desc: 'd', steps, pair: false, destination: { mode: 'copy', folder: 'C:\out' }, conflict: 'skip' });
+
+  it('a 0.2.0 profile (value + add text) survives unchanged', () => {
+    const old = profile([{ type: 'pdfValue', keyword: 'Invoice No.:', position: 'below', occurrence: 2 }, { type: 'addText', prefix: 'CN_', suffix: '' }]);
+    expect(renameProfile(old)).toEqual(old);
+  });
+
+  it('every new step kind is valid with its defaults, and add text may carry an insert', () => {
+    for (const step of Object.values(NEW_STEP)) expect(validStep(step)).toBe(true);
+    expect(validStep({ type: 'addText', prefix: '', suffix: '', insert: { text: '!', at: 0 } })).toBe(true);
+    expect(renameProfile(profile(Object.values(NEW_STEP)))?.steps).toEqual(Object.values(NEW_STEP));
+  });
+
+  it('a wrong-typed field in any step kind drops the profile', () => {
+    const bad: unknown[] = [
+      { ...NEW_STEP.pdfValue, keyword: 5 },
+      { ...NEW_STEP.pdfValue, position: 'left' },
+      { ...NEW_STEP.pdfPattern, preset: 'phone' },
+      { ...NEW_STEP.pdfPattern, regex: null },
+      { ...NEW_STEP.pdfPattern, occurrence: 1.5 },
+      { ...NEW_STEP.list, path: 3 },
+      { ...NEW_STEP.list, against: 'row' },
+      { ...NEW_STEP.addText, prefix: 1 },
+      { ...NEW_STEP.addText, insert: { text: '!' } },
+      { ...NEW_STEP.addText, insert: 'x' },
+      { ...NEW_STEP.addText, insert: null },
+      { ...NEW_STEP.replace, regex: 'yes' },
+      { ...NEW_STEP.replace, all: 1 },
+      { ...NEW_STEP.replace, with: undefined },
+      { ...NEW_STEP.remove, what: 'tail' },
+      { ...NEW_STEP.remove, from: '1' },
+      { ...NEW_STEP.remove, end: 0 },
+      { ...NEW_STEP.case, to: 'snake' },
+      { ...NEW_STEP.number, pad: '3' },
+      { ...NEW_STEP.number, at: 'middle' },
+      { ...NEW_STEP.number, sep: null },
+      { ...NEW_STEP.date, from: 'tomorrow' },
+      { ...NEW_STEP.date, format: 7 },
+      { type: 'constructor' },
+      { type: 'toString' },
+      { type: 'upper' },
+      'trim',
+      null,
+    ];
+    for (const step of bad) expect(renameProfile(profile([step])), JSON.stringify(step)).toBeNull();
+    expect(renameProfile(profile([NEW_STEP.trim, bad[0]]))).toBeNull();
+  });
+
+  it('a missing id or name drops the profile; missing options get defaults', () => {
+    expect(renameProfile({ ...profile([]), id: '' })).toBeNull();
+    expect(renameProfile({ ...profile([]), name: undefined })).toBeNull();
+    expect(renameProfile({ ...profile([]), steps: 'trim' })).toBeNull();
+    expect(renameProfile(null)).toBeNull();
+    expect(renameProfile({ id: 'a', name: 'A', steps: [] })).toEqual({ id: 'a', name: 'A', desc: '', steps: [], pair: true, destination: { mode: 'inplace' }, conflict: 'add' });
+  });
+
+  it('normalizeProfiles drops a broken rename profile and keeps the good ones', () => {
+    const good = profile([NEW_STEP.trim], 'good');
+    const out = normalizeProfiles({ rename: [good, profile([{ type: 'case', to: 'snake' }], 'bad'), 7, { name: 'no id', steps: [] }], split: [] });
+    expect(out.rename).toEqual([good]);
+    expect(normalizeProfiles({ rename: 'oops' }).rename).toEqual([]);
   });
 });

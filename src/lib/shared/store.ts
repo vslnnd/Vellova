@@ -1,3 +1,4 @@
+import { renameProfile } from '../rename/engine/profile';
 import { splitProfile } from '../split/engine/profile';
 import type { Batch, BatchItem, RenameProfile, Settings, SplitProfile } from './types';
 
@@ -46,9 +47,10 @@ function splitSettings(v: unknown): Settings['split'] {
   };
 }
 
-/** A loaded profiles file: split profiles are checked one by one (a file from before Split has none). */
-export function normalizeProfiles(v: ProfilesFile | { rename: RenameProfile[]; split?: unknown }): ProfilesFile {
-  return { ...v, split: (Array.isArray(v.split) ? v.split : []).flatMap((p) => splitProfile(p) ?? []) };
+/** A loaded profiles file: profiles are checked one by one (a file from before Split has no split profiles). */
+export function normalizeProfiles(v: { rename?: unknown; split?: unknown }): ProfilesFile {
+  const each = <T>(list: unknown, one: (p: unknown) => T | null): T[] => (Array.isArray(list) ? list : []).flatMap((p) => one(p) ?? []);
+  return { ...v, rename: each(v.rename, renameProfile), split: each(v.split, splitProfile) };
 }
 
 /** A marker keeps `ended` only when it is a boolean. */

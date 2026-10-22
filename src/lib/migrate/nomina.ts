@@ -1,13 +1,12 @@
-import { DEFAULT_RULES, profileFromRules } from '../rename/engine/profile';
+import { DEFAULT_RULES, POSITIONS, profileFromRules, renameProfile } from '../rename/engine/profile';
 import { splitProfile } from '../split/engine/profile';
 import { batchSummary, capHistory, isObj } from '../shared/store';
 import { profilesOf, splitifyItems } from './splitify';
-import type { Batch, BatchItem, Position, RenameProfile, Settings, SplitProfile } from '../shared/types';
+import type { Batch, BatchItem, RenameProfile, Settings, SplitProfile } from '../shared/types';
 
 /** Where the previous rename app kept its data, relative to %APPDATA%. Order matters for planImport. */
 export const NOMINA_FILES = ['Nomina\\nomina-profiles.json', 'Nomina\\nomina-history.json', 'Nomina\\nomina_history.json', 'Nomina\\nomina-settings.json'];
 
-const POSITIONS: Position[] = ['after', 'before', 'above', 'below'];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const obj = (v: unknown): Record<string, any> => (isObj(v) ? v : {});
 const list = (v: unknown) => (Array.isArray(v) ? v.map(obj) : []);
@@ -92,27 +91,6 @@ export function mergeImport(current: { profiles: RenameProfile[]; history: Batch
   };
 }
 
-const validStep = (st: unknown) => {
-  const x = obj(st);
-  if (x.type === 'pdfValue') return typeof x.keyword === 'string' && POSITIONS.includes(x.position) && Number.isInteger(x.occurrence);
-  return x.type === 'addText' && typeof x.prefix === 'string' && typeof x.suffix === 'string';
-};
-
-/** One profile from a Vellova export: bad steps drop the profile, missing options get defaults. */
-function ownProfile(p: Record<string, any>): RenameProfile | null { // eslint-disable-line @typescript-eslint/no-explicit-any
-  if (!str(p.id) || !str(p.name) || !Array.isArray(p.steps) || !p.steps.every(validStep)) return null;
-  const d = obj(p.destination);
-  return {
-    id: p.id,
-    name: p.name,
-    desc: str(p.desc),
-    steps: p.steps,
-    pair: typeof p.pair === 'boolean' ? p.pair : true,
-    destination: d.mode === 'copy' && str(d.folder) ? { mode: 'copy', folder: d.folder } : { mode: 'inplace' },
-    conflict: p.conflict === 'skip' || p.conflict === 'replace' ? p.conflict : 'add',
-  };
-}
-
 /** A profiles file chosen in Profiles › Import: Vellova's own export, Splitify's profiles file, or the previous rename app's. */
 export function importProfiles(text: string): { rename: RenameProfile[]; split: SplitProfile[] } {
   const sp = splitifyItems(text);
@@ -120,7 +98,7 @@ export function importProfiles(text: string): { rename: RenameProfile[]; split: 
   const v = parse(text);
   const o = obj(v);
   const items = Array.isArray(v) ? v : o.rename;
-  const ours = list(items).map(ownProfile).filter((p): p is RenameProfile => !!p);
+  const ours = list(items).map(renameProfile).filter((p): p is RenameProfile => !!p);
   const split = list(o.split).map(splitProfile).filter((p): p is SplitProfile => !!p);
   return { rename: ours.length ? ours : Array.isArray(v) ? mapProfiles(items) : [], split };
 }

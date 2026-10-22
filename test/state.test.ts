@@ -25,7 +25,7 @@ const load = () => import('../src/lib/shared/state.svelte');
 
 describe('loadAll', () => {
   it('keeps loading the other files when one cannot be read, and never overwrites it', async () => {
-    files['profiles.json'] = '{"rename":[{"id":"p1"}],"split":[]}';
+    files['profiles.json'] = '{"rename":[{"id":"p1","name":"P","steps":[]}],"split":[]}';
     files['history.json'] = '[{"id":"b1"}]';
     m.read.mockImplementation(async (n: string) => {
       if (n === 'settings.json') throw new Error('locked');
