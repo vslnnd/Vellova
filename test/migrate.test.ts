@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SPLIT_RULES } from '../src/lib/split/engine/profile';
 import { planSplitifyImport, SPLITIFY_FILES } from '../src/lib/migrate/splitify';
 import { freshProfiles, importProfiles, isEmpty, mapHistory, mapProfiles, mapSettings, mergeImport, planImport } from '../src/lib/migrate/nomina';
-import { renameProfile, validStep } from '../src/lib/rename/engine/profile';
+import { DEFAULT_RULES, profileFromRules, renameProfile, validStep } from '../src/lib/rename/engine/profile';
 import { NEW_STEP } from '../src/lib/rename/engine/steps';
 import { normalizeProfiles } from '../src/lib/shared/store';
 
@@ -194,7 +194,6 @@ describe('rename profiles with the new steps', () => {
       { ...NEW_STEP.pdfValue, position: 'left' },
       { ...NEW_STEP.pdfPattern, preset: 'phone' },
       { ...NEW_STEP.pdfPattern, regex: null },
-      { ...NEW_STEP.pdfPattern, occurrence: 1.5 },
       { ...NEW_STEP.list, path: 3 },
       { ...NEW_STEP.list, against: 'row' },
       { ...NEW_STEP.addText, prefix: 1 },
@@ -221,6 +220,22 @@ describe('rename profiles with the new steps', () => {
     ];
     for (const step of bad) expect(renameProfile(profile([step])), JSON.stringify(step)).toBeNull();
     expect(renameProfile(profile([NEW_STEP.trim, bad[0]]))).toBeNull();
+  });
+
+  it('a stored match number that is null, fractional or below 1 is healed to a whole number, not dropped', () => {
+    const occ = (steps: unknown[]) => renameProfile(profile(steps))?.steps.map((s) => ('occurrence' in s ? s.occurrence : null));
+    const value = (occurrence: unknown) => ({ type: 'pdfValue', keyword: 'K', position: 'after', occurrence });
+    expect(occ([value(1.5), value(null), value(0), value(-2), value('x'), value(3), value(2.9)])).toEqual([1, 1, 1, 1, 1, 3, 2]);
+    expect(occ([{ ...NEW_STEP.pdfPattern, occurrence: 1.5 }, { ...NEW_STEP.pdfPattern, occurrence: null }])).toEqual([1, 1]);
+    const out = normalizeProfiles({ rename: [profile([value(1.5)], 'a'), profile([value(null)], 'b')] });
+    expect(out.rename.map((p) => [p.id, p.steps[0]])).toEqual([['a', value(1)], ['b', value(1)]]);
+    expect(validStep(value(1.5))).toBe(false);
+  });
+
+  it('profileFromRules stores a whole match number, at least 1', () => {
+    const occ = (occurrence: unknown) => profileFromRules({ ...DEFAULT_RULES, occurrence: occurrence as number }, 'P', 'p').steps[0];
+    expect([occ(null), occ(NaN), occ(1.5), occ(0), occ(4)]).toEqual([1, 1, 1, 1, 4].map((occurrence) => ({ type: 'pdfValue', keyword: '', position: 'after', occurrence })));
+    expect(validStep(occ(null))).toBe(true);
   });
 
   it('a missing id or name drops the profile; missing options get defaults', () => {

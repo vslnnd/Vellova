@@ -163,13 +163,14 @@ describe('runSteps: modifiers', () => {
     expect(on({ type: 'trim' }, '  a \t b  ')).toBe('a b');
   });
 
-  it('case: upper, lower, title (first letter after start, space, _ or -) and sentence (first letter only)', () => {
+  it('case: upper, lower, title (first letter after start, space, _ or -) and sentence (first letter, the rest lower)', () => {
     const to = (c: 'upper' | 'lower' | 'title' | 'sentence', base = SRC) => on({ type: 'case', to: c }, base);
     expect(to('upper')).toBe('A  B-C (X) 12');
     expect(to('lower')).toBe('a  b-c (x) 12');
     expect(to('title')).toBe('A  B-C (x) 12');
     expect(to('title', 'ANNUAL_report-q3 final')).toBe('Annual_Report-Q3 Final');
-    expect(to('sentence')).toBe('A  B-c (x) 12');
+    expect(to('sentence')).toBe('A  b-c (x) 12');
+    expect(to('sentence', 'ANNUAL REPORT')).toBe('Annual report');
   });
 
   it('addText: prefix, suffix, and an insert at a position counted from 0', () => {
@@ -185,6 +186,16 @@ describe('runSteps: number and date', () => {
   it('number: start + index * step, padded, joined at the start or end, and offered as {n}', () => {
     expect(runSteps([{ type: 'number', start: 7, step: 2, pad: 3, at: 'start', sep: '-' }], ctx({}))).toMatchObject({ ok: true, base: '015-scan 01', n: '015' });
     expect(runSteps([{ ...NEW_STEP.number } as Step], ctx({ index: 0 }))).toMatchObject({ base: 'scan 01_001', n: '001' });
+  });
+
+  it('number: the padding is bounded to 20 digits, and a negative pad adds none', () => {
+    const n = (pad: number) => {
+      const r = runSteps([{ ...NEW_STEP.number, pad } as Step], ctx({ index: 0 }));
+      return r.ok ? r.n : r.detail;
+    };
+    expect(n(999)).toBe('1'.padStart(20, '0'));
+    expect(n(1e12)).toBe('1'.padStart(20, '0'));
+    expect(n(-5)).toBe('1');
   });
 
   it('date: modified, created or today, formatted, joined, and offered as {date}', () => {

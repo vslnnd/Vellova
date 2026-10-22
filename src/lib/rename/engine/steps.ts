@@ -105,7 +105,7 @@ const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
 function recase(to: Of<'case'>['to'], name: string): string {
   if (to === 'upper') return name.toUpperCase();
   if (to === 'lower') return name.toLowerCase();
-  if (to === 'sentence') return cap(name);
+  if (to === 'sentence') return cap(name.toLowerCase());
   return name.toLowerCase().replace(/[^ _-]+/g, cap);
 }
 
@@ -159,7 +159,7 @@ function apply(s: Step, st: State, ctx: StepCtx): Fail | null {
       st.name = recase(s.to, st.name);
       break;
     case 'number':
-      st.n = String(s.start + ctx.index * s.step).padStart(s.pad, '0');
+      st.n = String(s.start + ctx.index * s.step).padStart(Math.min(Math.max(s.pad, 0), 20), '0'); // bounded: a huge pad would throw
       st.name = join(st.name, st.n, s.at, s.sep);
       break;
     case 'date':

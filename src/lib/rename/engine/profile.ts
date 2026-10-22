@@ -43,13 +43,19 @@ export function rulesFromProfile(p: RenameProfile): RenameRules {
   };
 }
 
+/** A match number from a number input can be null, NaN or fractional: it is stored as a whole number, at least 1. */
+export function matchNo(v: unknown): number {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n > 1 ? n : 1;
+}
+
 export function profileFromRules(r: RenameRules, name: string, id: string, desc = ''): RenameProfile {
   return {
     id,
     name,
     desc,
     steps: [
-      { type: 'pdfValue', keyword: r.keyword, position: r.position, occurrence: r.occurrence },
+      { type: 'pdfValue', keyword: r.keyword, position: r.position, occurrence: matchNo(r.occurrence) },
       { type: 'addText', prefix: r.prefix, suffix: r.suffix },
     ],
     pair: r.pair,
@@ -89,17 +95,24 @@ export function validStep(v: unknown): v is Step {
   return typeof t === 'string' && Object.hasOwn(SHAPES, t) && fits(SHAPES[t as Step['type']], v);
 }
 
+/** Stored match numbers that a number input once let through (null, 1.5) are healed rather than dropping the profile. */
+const healStep = (s: unknown) => {
+  const o = obj(s);
+  return o.type === 'pdfValue' || o.type === 'pdfPattern' ? { ...o, occurrence: matchNo(o.occurrence) } : s;
+};
+
 /** One stored or imported profile: bad steps or a missing id or name drop it, missing options get defaults. */
 export function renameProfile(v: unknown): RenameProfile | null {
   const p = obj(v);
   const [id, name] = [str(p.id), str(p.name)];
-  if (!id || !name || !Array.isArray(p.steps) || !p.steps.every(validStep)) return null;
+  const steps = Array.isArray(p.steps) ? p.steps.map(healStep) : null;
+  if (!id || !name || !steps || !steps.every(validStep)) return null;
   const d = obj(p.destination);
   return {
     id,
     name,
     desc: str(p.desc),
-    steps: p.steps,
+    steps,
     pair: typeof p.pair === 'boolean' ? p.pair : true,
     destination: d.mode === 'copy' && str(d.folder) ? { mode: 'copy', folder: str(d.folder) } : { mode: 'inplace' },
     conflict: p.conflict === 'skip' || p.conflict === 'replace' ? p.conflict : 'add',
