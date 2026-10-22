@@ -47,8 +47,11 @@ describe('names', () => {
     expect(expandFolder('D:\\out', { value: 'x', n: '1', date: '' })).toBe('D:\\out');
   });
 
-  it('a folder part that is empty or only dots becomes "_"; the template text stays as typed', () => {
-    for (const value of ['', '  ', '.', '..', '...']) expect(expandFolder('D:\\{value}', { value, n: '1', date: '' })).toBe('D:\\_');
+  it('a folder part loses trailing dots and spaces, and one left empty becomes "_"; the template text stays as typed', () => {
+    expect(expandFolder('D:\\{value}', { value: 'ACME Inc.', n: '1', date: '' })).toBe('D:\\ACME Inc');
+    expect(expandFolder('D:\\{value}', { value: 'a. . ', n: '1', date: '' })).toBe('D:\\a');
+    expect(expandFolder('D:\\{value}', { value: '.hidden', n: '1', date: '' })).toBe('D:\\.hidden');
+    for (const value of ['', '  ', '.', '..', '...', '. .']) expect(expandFolder('D:\\{value}', { value, n: '1', date: '' })).toBe('D:\\_');
     expect(expandFolder('D:\\a..b\\{value}', { value: '..\\x', n: '1', date: '' })).toBe('D:\\a..b\\.._x');
   });
 });

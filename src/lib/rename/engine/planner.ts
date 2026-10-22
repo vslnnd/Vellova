@@ -69,18 +69,18 @@ function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
     }
   };
 
-  /** Where a PDF goes. A typed name for a PDF without a value expands the folder as if the value were empty. */
-  const folderOf = (pdf: string, named?: Named) =>
-    dest.mode === 'inplace' ? splitPath(pdf).dir : expandFolder(dest.folder, named?.ok ? named : { value: null, n: '1', date: '' });
+  /** Where a PDF or a typed name goes. Without a value (nothing to follow) the folder is expanded as if the value were empty. */
+  const folderOf = (file: string, named?: Named) =>
+    dest.mode === 'inplace' ? splitPath(file).dir : expandFolder(dest.folder, named?.ok ? named : { value: null, n: '1', date: '' });
 
   const out = new Map<string, PlanItem>();
   // PDFs and typed names claim names first; companions then take their PDF's final name.
   for (const f of input.files) {
     if (input.skipped.has(f)) out.set(f, item(f, 'skipped'));
-    else if (f in input.overrides) out.set(f, place(f, sanitize(input.overrides[f]), 'ready', folderOf(f, input.names[f])));
     else if (extOf(f) === PDF) {
       const v = input.names[f];
-      if (!v) out.set(f, item(f, 'pending', { detail: 'Waiting for its value…' }));
+      if (f in input.overrides) out.set(f, place(f, sanitize(input.overrides[f]), 'ready', folderOf(f, v)));
+      else if (!v) out.set(f, item(f, 'pending', { detail: 'Waiting for its value…' }));
       else if (!v.ok) out.set(f, item(f, 'attention', { reason: v.reason, detail: v.detail }));
       else out.set(f, place(f, sanitize(v.base), 'ready', folderOf(f, v)));
     }
@@ -92,14 +92,17 @@ function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
     const p = pdf ? out.get(pdf) : undefined;
     // A PDF that is skipped (or waiting for a folder) gives no final name to follow.
     const pdfName = p && (p.op || p.status === 'unchanged') ? p.name : undefined;
-    if (!input.pairEnabled) out.set(f, item(f, 'unchanged', { detail: 'Pairing with PDFs is off.' }));
-    else if (v) out.set(f, item(f, 'attention', { reason: v.reason, detail: v.detail }));
-    else if (!input.pairs) out.set(f, item(f, 'pending', { detail: 'Waiting for the PDFs…' }));
-    else if (!pdf) out.set(f, item(f, 'attention', { reason: 'no-match', detail: 'None of the PDF values appears in this file.' }));
+    // A typed name needs no PDF to match. In place it stays where the companion is; in a folder it goes beside its PDF.
+    const typed = f in input.overrides ? sanitize(input.overrides[f]) : null;
+    if (typed !== null && (!p || dest.mode === 'inplace')) out.set(f, place(f, typed, 'ready', folderOf(f)));
+    else if (typed === null && !input.pairEnabled) out.set(f, item(f, 'unchanged', { detail: 'Pairing with PDFs is off.' }));
+    else if (typed === null && v) out.set(f, item(f, 'attention', { reason: v.reason, detail: v.detail }));
+    else if (typed === null && !input.pairs) out.set(f, item(f, 'pending', { detail: 'Waiting for the PDFs…' }));
+    else if (typed === null && !pdf) out.set(f, item(f, 'attention', { reason: 'no-match', detail: 'None of the PDF values appears in this file.' }));
     else if (p?.status === 'pending') out.set(f, item(f, 'pending', { detail: p.detail }));
     else if (!pdfName) out.set(f, item(f, 'skipped', { detail: 'Its PDF is not being renamed.' }));
     // beside its PDF's final place; in place, where the companion itself is
-    else out.set(f, place(f, splitExt(pdfName).base, 'paired', splitPath(dest.mode === 'inplace' ? f : (p!.op?.to ?? p!.source)).dir));
+    else out.set(f, place(f, typed ?? splitExt(pdfName).base, typed === null ? 'paired' : 'ready', splitPath(dest.mode === 'inplace' ? f : (p!.op?.to ?? p!.source)).dir));
   }
   return input.files.map((f) => out.get(f)!);
 }

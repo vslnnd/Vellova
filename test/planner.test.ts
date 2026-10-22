@@ -180,6 +180,22 @@ describe('planRename', () => {
       expect(items[0].op?.to).toBe('C:\\out\\_\\Mine.pdf');
     });
 
+    it('a typed companion name goes beside its PDF; with its PDF skipped it is skipped too', () => {
+      const names = { [A]: named('DN', 'ACME') }, pairs = { [X]: A }, overrides = { [X]: 'Typed' };
+      const destination = { mode: 'move' as const, folder: 'C:\\out\\{value}' };
+      expect(plan({ files: [A, X], names, pairs, overrides, destination })[1]).toMatchObject({
+        status: 'ready', name: 'Typed.xlsx', op: { kind: 'rename', from: X, to: 'C:\\out\\ACME\\Typed.xlsx' },
+      });
+      expect(plan({ files: [A, X], names, pairs, overrides, destination, skipped: new Set([A]) }).map((i) => [i.status, i.op])).toEqual([['skipped', null], ['skipped', null]]);
+      expect(plan({ files: [A, X], pairs, overrides, destination })[1]).toMatchObject({ status: 'pending', op: null });
+    });
+
+    it('a typed name for a companion without a PDF stays in place, or falls back to "_" in a placeholder folder', () => {
+      expect(plan({ files: [X], overrides: { [X]: 'Typed' } })[0].op?.to).toBe('C:\\in\\Typed.xlsx');
+      expect(plan({ files: [X], overrides: { [X]: 'Typed' }, destination: { mode: 'move', folder: 'C:\\out\\{value}' } })[0].op?.to).toBe('C:\\out\\_\\Typed.xlsx');
+      expect(plan({ files: [X], overrides: { [X]: 'Typed' }, destination: { mode: 'move', folder: 'C:\\out' } })[0].op?.to).toBe('C:\\out\\Typed.xlsx');
+    });
+
     it('waits for a folder, naming the mode', () => {
       const names = { [A]: named('DN') };
       expect(plan({ files: [A], names, destination: { mode: 'move', folder: '' } })[0]).toMatchObject({ status: 'pending', detail: 'Choose a folder to move into.' });

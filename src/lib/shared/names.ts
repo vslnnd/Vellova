@@ -29,12 +29,12 @@ export function sanitize(base: string): string {
 
 /**
  * A folder template with `{value}`, `{n}` and `{date}` filled in. Each filled-in part is made safe on its own
- * (`\ /` inside it become `_`), and a part that is empty or only dots becomes `_`, so a value can never name
- * `..` and leave the chosen folder. The template's own text stays as typed.
+ * (`\ /` inside it become `_`) and loses its trailing dots and spaces, which Windows drops from a folder name.
+ * A part left empty becomes `_`, so a value can never name `.` or `..` and leave the chosen folder.
+ * The template's own text stays as typed.
  */
 export function expandFolder(template: string, n: { value: string | null; n: string; date: string }): string {
   return template.replace(/\{(value|n|date)\}/g, (_, k: 'value' | 'n' | 'date') => {
-    const part = sanitize(n[k] ?? '');
-    return /^\.*$/.test(part) ? '_' : part;
+    return sanitize(n[k] ?? '').replace(/[. ]+$/, '') || '_';
   });
 }
