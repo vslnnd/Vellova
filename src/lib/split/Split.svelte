@@ -27,6 +27,7 @@
       const g = memo.get(f.path);
       if (g) out[f.path] = g;
     }
+    for (const p of memo.keys()) if (!session.files.some((f) => f.path === p)) memo.delete(p);
     return out;
   });
 

@@ -227,16 +227,20 @@ pub async fn forget_batch(app: AppHandle, batch: String) -> Result<(), String> {
 pub async fn recover_all(app: AppHandle) -> Result<UndoReport, String> {
     let _busy = Busy::take()?;
     let mut rep = UndoReport::default();
-    let Ok(rd) = fs::read_dir(data_dir(&app)?.join("journal")) else { return Ok(rep) };
-    for p in rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "jsonl")) {
-        match ops::recover(&p, &ops::RecycleBin) {
-            Ok(r) => {
-                rep.restored += r.restored;
-                rep.skipped.extend(r.skipped);
+    let base = data_dir(&app)?;
+    if let Ok(rd) = fs::read_dir(base.join("journal")) {
+        for p in rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "jsonl")) {
+            match ops::recover(&p, &ops::RecycleBin) {
+                Ok(r) => {
+                    rep.restored += r.restored;
+                    rep.skipped.extend(r.skipped);
+                }
+                Err(e) => rep.skipped.push(ops::Skipped { path: p.to_string_lossy().into_owned(), reason: e.to_string() }),
             }
-            Err(e) => rep.skipped.push(ops::Skipped { path: p.to_string_lossy().into_owned(), reason: e.to_string() }),
         }
     }
+    // staged outputs of an interrupted run are never copied; a locked leftover is tried again at the next start
+    let _ = clear_all_staged(&base);
     Ok(rep)
 }
 
@@ -258,6 +262,14 @@ fn write_staged(base: &Path, batch: &str, n: u32, bytes: &[u8]) -> Result<PathBu
 
 fn clear_staged(base: &Path, batch: &str) -> Result<(), String> {
     match fs::remove_dir_all(stage_dir(base, batch)?) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(err(e)),
+        _ => Ok(()),
+    }
+}
+
+/// Removes the whole staging folder (ours); missing is Ok.
+fn clear_all_staged(base: &Path) -> Result<(), String> {
+    match fs::remove_dir_all(base.join("staging")) {
         Err(e) if e.kind() != io::ErrorKind::NotFound => Err(err(e)),
         _ => Ok(()),
     }
@@ -402,6 +414,18 @@ mod tests {
         assert!(!p.exists());
         clear_staged(base.path(), "b-1").unwrap(); // missing is fine
         assert!(clear_staged(base.path(), "..\\x").is_err());
+    }
+
+    #[test]
+    fn all_staging_is_cleared_and_missing_is_fine() {
+        let base = tempfile::tempdir().unwrap();
+        write_staged(base.path(), "b-1", 0, b"x").unwrap();
+        write_staged(base.path(), "b-2", 0, b"y").unwrap();
+        fs::write(base.path().join("keep.json"), "{}").unwrap();
+        clear_all_staged(base.path()).unwrap();
+        assert!(!base.path().join("staging").exists());
+        assert!(base.path().join("keep.json").exists());
+        clear_all_staged(base.path()).unwrap();
     }
 
     #[test]

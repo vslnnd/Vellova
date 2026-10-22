@@ -15,6 +15,7 @@ import { readGrid, writeFile } from './sheets';
 
 const SHEETS = ['.xlsx', '.xls', '.csv'];
 const ARCHIVE = 'archive:';
+const CHANGED = 'This file changed after the preview. Retry to read it again.';
 
 export const session = $state({
   files: [] as FileInfo[],
@@ -230,6 +231,7 @@ function forget(paths: string[]) {
   for (const p of paths) {
     delete session.columnFor[p];
     delete session.reads[p];
+    evict(p);
   }
 }
 
@@ -375,6 +377,9 @@ export async function runBatch(only?: string[]) {
         const read = session.reads[source];
         let parts: Uint8Array[];
         try {
+          // the preview was planned from the listed size and modified time: a file saved since then is read again first
+          const [now] = await ipc.listFiles([source], false).catch(() => [] as FileInfo[]);
+          if (now && (now.size !== f.size || now.mtime !== f.mtime)) throw { reason: 'internal', detail: CHANGED, hint: CHANGED };
           const bytes = await ipc.readFile(source).catch((e) => Promise.reject(ipcReason(e)));
           const grid = read?.ok ? read.grid : undefined;
           const header = session.rules.header.mode === 'manual' ? session.rules.header.row - 1 : 0;
@@ -382,9 +387,9 @@ export async function runBatch(only?: string[]) {
             sheet: session.rules.sheet, header, format: outs[0].format ?? 'xlsx', delimiter: grid?.delimiter ?? ',', outputs: outs.map((o) => o.spec!),
           }).catch((e) => Promise.reject({ reason: (e as { internal?: boolean })?.internal ? 'internal' : 'unreadable', detail: String((e as Error)?.message ?? e) }));
         } catch (e) {
-          const r = e as { reason: Reason; detail: string };
+          const r = e as { reason: Reason; detail: string; hint?: string };
           for (const o of outs) {
-            fail(o.id, source, r.reason, REASONS[r.reason].hint, r.detail);
+            fail(o.id, source, r.reason, r.hint ?? REASONS[r.reason].hint, r.detail);
             ran.add(o.id);
           }
           progress += outs.length;
@@ -396,6 +401,7 @@ export async function runBatch(only?: string[]) {
           if (!parts[k]) throw new Error(`The spreadsheet writer returned ${parts.length} files for ${outs.length} outputs.`);
           stagedAny = true;
           try {
+            // the index only has to be unique within this run: staging is cleared after every run
             const path = await ipc.stageWrite(id, outputs.indexOf(o), parts[k]);
             staged.push({ item: o, op: { ...o.op!, from: path } });
           } catch (e) {
@@ -407,7 +413,8 @@ export async function runBatch(only?: string[]) {
         }
       }
       // 2. copy the staged outputs into place
-      if (staged.length) {
+      // a Cancel during staging writes nothing: every output stays listed
+      if (staged.length && !cancelled) {
         const results = await ipc.applyPlan(id, staged.map((s) => s.op));
         const byIndex = new Map(results.map((r) => [r.i, r]));
         staged.forEach(({ item, op }, i) => {

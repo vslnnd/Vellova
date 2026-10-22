@@ -220,14 +220,45 @@ describe('split session', () => {
 
   it('after Cancel, a source written in full before it is still archived', async () => {
     const s = await load([A, B], {});
+    m.applyPlan.mockImplementationOnce(async (_b: string, ops: Op[]) => {
+      s.cancelActivity(); // while copying B's last output
+      return ops.map((_, i) => (i < 3 ? { i, ok: true } : { i, ok: false, code: 'cancelled' }));
+    });
+    await s.runBatch();
+    expect(m.cancelApply).toHaveBeenCalled();
+    expect(m.applyPlan.mock.calls[1][1].map((o: Op) => o.from)).toEqual([A]);
+    expect(s.plan.items.map((i) => [i.id, i.status])).toEqual([[`${B}|1`, 'ready']]);
+  });
+
+  it('a Cancel while staging copies nothing and keeps every output listed', async () => {
+    const s = await load([A, B]);
     m.stageWrite.mockImplementation(async (_b: string, n: number) => {
       if (n === 2) s.cancelActivity(); // while staging B's first output
       return `C:\\stage\\${n}`;
     });
     await s.runBatch();
-    expect(m.cancelApply).toHaveBeenCalled();
-    expect(m.applyPlan.mock.calls[0][1]).toHaveLength(3);
-    expect(m.applyPlan.mock.calls[1][1].map((o: Op) => o.from)).toEqual([A]);
+    expect(m.applyPlan).not.toHaveBeenCalled();
+    expect(m.stageClear).toHaveBeenCalledTimes(1);
+    expect(s.plan.items.map((i) => i.status)).toEqual(['ready', 'ready', 'ready', 'ready']);
+  });
+
+  it('fails the outputs of a source that changed after the preview', async () => {
+    const s = await load([A, B]);
+    m.listFiles.mockImplementation(async (p: string[]) => p.map((path) => ({ ...info(path), mtime: path === A ? 2 : 1 })));
+    await s.runBatch();
+    expect(m.writeFile).toHaveBeenCalledTimes(1);
+    expect(m.applyPlan.mock.calls[0][1].map((o: Op) => o.to)).toEqual([expect.stringMatching(/_B_X\.xlsx$/), expect.stringMatching(/_B_Y\.xlsx$/)]);
+    const changed = { reason: 'internal', detail: 'This file changed after the preview. Retry to read it again.' };
+    expect(s.session.failures).toEqual({ [`${A}|0`]: changed, [`${A}|1`]: changed });
+  });
+
+  it('removing a file forgets what was read from it', async () => {
+    const s = await load();
+    expect(m.readFile).toHaveBeenCalledTimes(1);
+    s.removeFile(A);
+    await s.addPaths([A]);
+    await s.refresh();
+    expect(m.readFile).toHaveBeenCalledTimes(2);
   });
 
   it('clears staging when the run stops between staging and the copy', async () => {
