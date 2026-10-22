@@ -61,11 +61,11 @@ export function planSplitifyImport(texts: (string | null)[]): SplitifyPlan {
   const [profiles, history, favs, settings] = texts.map(parse);
   const batches = (Array.isArray(history) ? history.filter(isObj) : []).flatMap((h): Batch[] => {
     const time = typeof h.timestamp === 'number' ? h.timestamp : Date.parse(str(h.timestamp));
-    if (Number.isNaN(time) || (typeof h.id !== 'string' && typeof h.id !== 'number')) return [];
+    if (!Number.isFinite(time) || (typeof h.id !== 'string' && typeof h.id !== 'number')) return [];
     const files = Array.isArray(h.files) ? h.files.filter(isObj) : [];
     const b: Batch = { id: `splitify-${h.id}`, tool: 'split', time, verb: 'created', summary: '', items: files.map((f) => ({ from: str(f.path) || str(f.name), to: str(h.outputDir), ok: true })), undoable: false };
     if (str(h.profileName) && h.profileName !== NO_PROFILE) b.profile = h.profileName;
-    b.summary = typeof h.totalCreated === 'number' && Number.isFinite(h.totalCreated) ? `${h.totalCreated} ${h.totalCreated === 1 ? 'file' : 'files'} created` : batchSummary(b);
+    b.summary = Number.isInteger(h.totalCreated) && h.totalCreated >= 0 ? `${h.totalCreated} ${h.totalCreated === 1 ? 'file' : 'files'} created` : batchSummary(b);
     return [b];
   });
   const s = isObj(settings) ? settings : {};

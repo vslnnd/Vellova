@@ -87,7 +87,7 @@
 {#if old}
   <section class="card">
     <h3>Earlier data</h3>
-    <p class="hint">Import profiles and history from your previous renaming app. Anything imported before is skipped.</p>
+    <p class="hint">Import profiles and history from your previous apps. Anything imported before is skipped.</p>
     <div class="row"><button class="btn small" disabled={busy} onclick={() => void bring()}>Import</button></div>
     {#if imported}<p class="hint" role="status">{imported}</p>{/if}
   </section>
