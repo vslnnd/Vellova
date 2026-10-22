@@ -1,6 +1,8 @@
 import { DEFAULT_RULES, profileFromRules } from '../rename/engine/profile';
+import { splitProfile } from '../split/engine/profile';
 import { batchSummary, capHistory, isObj } from '../shared/store';
-import type { Batch, BatchItem, Position, RenameProfile, Settings } from '../shared/types';
+import { isSplitifyProfiles, splitifyProfiles } from './splitify';
+import type { Batch, BatchItem, Position, RenameProfile, Settings, SplitProfile } from '../shared/types';
 
 /** Where the previous rename app kept its data, relative to %APPDATA%. Order matters for planImport. */
 export const NOMINA_FILES = ['Nomina\\nomina-profiles.json', 'Nomina\\nomina-history.json', 'Nomina\\nomina_history.json', 'Nomina\\nomina-settings.json'];
@@ -111,16 +113,19 @@ function ownProfile(p: Record<string, any>): RenameProfile | null { // eslint-di
   };
 }
 
-/** A profiles file chosen in Profiles › Import: Vellova's own export, or the previous app's profiles file. */
-export function importProfiles(text: string): RenameProfile[] {
+/** A profiles file chosen in Profiles › Import: Vellova's own export, Splitify's profiles file, or the previous rename app's. */
+export function importProfiles(text: string): { rename: RenameProfile[]; split: SplitProfile[] } {
+  if (isSplitifyProfiles(text)) return { rename: [], split: splitifyProfiles(text) };
   const v = parse(text);
-  const items = Array.isArray(v) ? v : obj(v).rename;
+  const o = obj(v);
+  const items = Array.isArray(v) ? v : o.rename;
   const ours = list(items).map(ownProfile).filter((p): p is RenameProfile => !!p);
-  return ours.length ? ours : Array.isArray(v) ? mapProfiles(items) : [];
+  const split = list(o.split).map(splitProfile).filter((p): p is SplitProfile => !!p);
+  return { rename: ours.length ? ours : Array.isArray(v) ? mapProfiles(items) : [], split };
 }
 
 /** The imported profiles whose id is new: not in `ids` and not repeated within the import. */
-export const freshProfiles = (ids: Iterable<string>, imported: RenameProfile[]): RenameProfile[] => {
+export const freshProfiles = <T extends { id: string }>(ids: Iterable<string>, imported: T[]): T[] => {
   const seen = new Set(ids);
   return imported.filter((p) => !seen.has(p.id) && !!seen.add(p.id));
 };

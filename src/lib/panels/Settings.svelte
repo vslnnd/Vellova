@@ -78,6 +78,12 @@
   <p class="hint">Copy-to folder: <span class="mono">{data.settings.rename.folder || 'none yet'}</span></p>
 </section>
 
+<section class="card">
+  <h3>Split</h3>
+  <label class="inline"><input type="checkbox" bind:checked={data.settings.split.archive} onchange={() => save('settings')} /> Archive originals after splitting</label>
+  <p class="hint">Each profile sets its archive folder in Profiles.</p>
+</section>
+
 {#if old}
   <section class="card">
     <h3>Earlier data</h3>

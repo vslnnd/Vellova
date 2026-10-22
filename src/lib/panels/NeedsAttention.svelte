@@ -2,7 +2,10 @@
   import { revealItemInDir } from '@tauri-apps/plugin-opener';
   import { ui } from '../app.svelte';
   import { PDF } from '../rename/engine/files';
-  import { applyFixes, pickPdf, plan, REASONS, retry, session, setName, skip } from '../rename/session.svelte';
+  import * as rename from '../rename/session.svelte';
+  import { REASONS } from '../shared/reasons';
+  import { headerInfo } from '../split/engine/header';
+  import * as split from '../split/session.svelte';
   import { extOf, splitPath } from '../shared/names';
   import type { PlanItem, Reason } from '../shared/types';
   import { island } from '../shell/islandState.svelte';
@@ -11,18 +14,32 @@
   const RETRY: Reason[] = ['locked', 'exists', 'internal'];
   const SHOW: Reason[] = ['permission', 'missing'];
 
+  const isSplit = $derived(ui.tool === 'split');
+  const tool = $derived(isSplit ? split : rename);
+  const session = $derived(tool.session);
+  /** Rename acts on a file's path, Split on an item's id (a file, one output or a failed archive). */
+  const key = (it: PlanItem) => (isSplit ? it.id : it.source);
   const groups = $derived.by(() => {
     const m = new Map<Reason, PlanItem[]>();
-    for (const it of plan.items) if (it.status === 'attention' && it.reason) m.set(it.reason, [...(m.get(it.reason) ?? []), it]);
+    for (const it of tool.plan.items) if (it.status === 'attention' && it.reason) m.set(it.reason, [...(m.get(it.reason) ?? []), it]);
     return [...m];
   });
-  const pdfs = $derived(plan.items.filter((i) => extOf(i.source) === PDF && i.name));
-  const ready = $derived(plan.items.filter((i) => i.op && i.status !== 'attention' && session.fixed.includes(i.source)).length);
+  const pdfs = $derived(rename.plan.items.filter((i) => extOf(i.source) === PDF && i.name));
+  const ready = $derived(
+    isSplit
+      ? split.session.fixed.length
+      : rename.plan.items.filter((i) => i.op && i.status !== 'attention' && rename.session.fixed.includes(i.source)).length,
+  );
+  /** The column names of a split file, for "Choose column for this file". */
+  const columns = (path: string) => {
+    const r = split.session.reads[path];
+    return r?.ok ? headerInfo(r.grid, split.session.rules.header).columns.map((c) => c.name).filter((n) => n.trim()) : [];
+  };
   const name = (p: string) => splitPath(p).name;
 
   function apply() {
     ui.panel = null;
-    void applyFixes();
+    void tool.applyFixes();
   }
 </script>
 
@@ -33,12 +50,12 @@
     <div class="row">
       <h3>{REASONS[reason].title} · {items.length}</h3>
       <span class="grow"></span>
-      {#if RETRY.includes(reason)}<button class="btn small" onclick={() => items.forEach((i) => void retry(i.source))}>Retry all</button>{/if}
-      <button class="btn small" onclick={() => items.forEach((i) => skip(i.source))}>Skip all</button>
+      {#if RETRY.includes(reason)}<button class="btn small" disabled={!!island.activity} onclick={() => items.forEach((i) => void tool.retry(key(i)))}>Retry all</button>{/if}
+      <button class="btn small" onclick={() => items.forEach((i) => tool.skip(key(i)))}>Skip all</button>
     </div>
     <p class="hint">{REASONS[reason].hint}</p>
     {#if reason === 'exists' && session.rules.conflict === 'replace'}
-      <p class="hint">If this drive has no Recycle Bin, Replace can't be used on it. Choose "Add (1)" or "Skip" for existing names in Rename, then Retry.</p>
+      <p class="hint">If this drive has no Recycle Bin, Replace can't be used on it. Choose "Add (1)" or "Skip" for existing names in {isSplit ? 'Split' : 'Rename'}, then Retry.</p>
     {/if}
     <ul>
       {#each items as it (it.id)}
@@ -47,18 +64,23 @@
           {#if it.detail && it.detail !== REASONS[reason].hint}<span class="hint">{it.detail}</span>{/if}
           <div class="row">
             {#if TYPE.includes(reason)}
-              <input class="field mono grow" placeholder="Type a name" aria-label="New name for {name(it.source)}" onchange={(e) => setName(it.source, e.currentTarget.value, true)} />
+              <input class="field mono grow" placeholder="Type a name" aria-label="New name for {name(it.source)}" onchange={(e) => rename.setName(it.source, e.currentTarget.value, true)} />
             {:else if reason === 'no-match'}
-              <select class="field grow" aria-label="PDF for {name(it.source)}" onchange={(e) => e.currentTarget.value && pickPdf(it.source, e.currentTarget.value)}>
+              <select class="field grow" aria-label="PDF for {name(it.source)}" onchange={(e) => e.currentTarget.value && rename.pickPdf(it.source, e.currentTarget.value)}>
                 <option value="">Pick its PDF…</option>
                 {#each pdfs as p (p.id)}<option value={p.source}>{name(p.source)} → {p.name}</option>{/each}
               </select>
+            {:else if reason === 'no-column'}
+              <select class="field grow" aria-label="Column for {name(it.source)}" onchange={(e) => e.currentTarget.value && split.setColumn(it.source, e.currentTarget.value)}>
+                <option value="">Choose column for this file…</option>
+                {#each columns(it.source) as c (c)}<option value={c}>{c}</option>{/each}
+              </select>
             {:else if RETRY.includes(reason)}
-              <button class="btn small" onclick={() => void retry(it.source)}>Retry</button>
+              <button class="btn small" disabled={!!island.activity} onclick={() => void tool.retry(key(it))}>Retry</button>
             {:else if SHOW.includes(reason)}
               <button class="btn small" onclick={() => void revealItemInDir(reason === 'missing' ? splitPath(it.source).dir : it.source).catch(() => {})}>Show in folder</button>
             {/if}
-            <button class="btn small" onclick={() => skip(it.source)}>Skip</button>
+            <button class="btn small" onclick={() => tool.skip(key(it))}>Skip</button>
           </div>
         </li>
       {/each}

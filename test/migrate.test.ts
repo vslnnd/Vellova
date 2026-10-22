@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_SPLIT_RULES } from '../src/lib/split/engine/profile';
 import { freshProfiles, importProfiles, isEmpty, mapHistory, mapProfiles, mapSettings, mergeImport, planImport } from '../src/lib/migrate/nomina';
 
 const PROFILES = [
@@ -65,7 +66,7 @@ describe('importing the previous rename app', () => {
       { id: 'f', name: 'F', steps: [{ type: 'addText', prefix: 'x', suffix: '' }] },
       { ...good, id: 'g', pair: 'yes', destination: { mode: 'copy' }, conflict: 'nuke' },
     ];
-    const out = importProfiles(JSON.stringify({ rename: [good, ...hostile] }));
+    const out = importProfiles(JSON.stringify({ rename: [good, ...hostile] })).rename;
     expect(out.map((p) => p.id)).toEqual(['a', 'f', 'g']);
     expect(out[1]).toMatchObject({ desc: '', pair: true, destination: { mode: 'inplace' }, conflict: 'add' });
     expect(out[2]).toMatchObject({ pair: true, destination: { mode: 'inplace' }, conflict: 'add' });
@@ -89,15 +90,34 @@ describe('importing the previous rename app', () => {
 
   it('profile files: Vellova exports pass through, old files are mapped', () => {
     const ours = mapProfiles(PROFILES);
-    expect(importProfiles(JSON.stringify({ rename: ours, split: [] }))).toEqual(ours);
-    expect(importProfiles(JSON.stringify(PROFILES)).map((p) => p.name)).toEqual(['Debit notes', 'Odd']);
-    expect(importProfiles('not json')).toEqual([]);
+    const split = { id: 's1', name: 'By city', desc: '', rules: { ...DEFAULT_SPLIT_RULES, column: 'City' }, archiveFolder: 'C:\done' };
+    expect(importProfiles(JSON.stringify({ rename: ours, split: [] }))).toEqual({ rename: ours, split: [] });
+    expect(importProfiles(JSON.stringify({ rename: ours, split: [split, { nope: 1 }] }))).toEqual({ rename: ours, split: [split] });
+    expect(importProfiles(JSON.stringify({ split: [split] }))).toEqual({ rename: [], split: [split] });
+    expect(importProfiles(JSON.stringify(PROFILES)).rename.map((p) => p.name)).toEqual(['Debit notes', 'Odd']);
+    expect(importProfiles(JSON.stringify(PROFILES)).split).toEqual([]);
+    expect(importProfiles('not json')).toEqual({ rename: [], split: [] });
+  });
+
+  it('a Splitify array gives split profiles only, told apart by parameters or params', () => {
+    const sp = [
+      { id: 'a', name: 'Cities', description: 'd', parameters: [{ value: 7, label: 'Leeds', payable: false }, { value: 'x' }], archiveFolder: 'C:\old' },
+      { id: 'b', name: 'Legacy', params: [{ value: 'y', label: 5 }] },
+    ];
+    const out = importProfiles(JSON.stringify(sp));
+    expect(out.rename).toEqual([]);
+    expect(out.split.map((p) => [p.id, p.name, p.desc, p.archiveFolder, p.rules.mode])).toEqual([
+      ['splitify-a', 'Cities', 'd', 'C:\old', 'value'],
+      ['splitify-b', 'Legacy', '', null, 'value'],
+    ]);
+    expect(out.split[0].rules.params).toEqual([{ value: '7', label: 'Leeds', payable: false }, { value: 'x', label: '', payable: true }]);
+    expect(out.split[1].rules.params).toEqual([{ value: 'y', label: '', payable: true }]);
   });
 });
 
 describe('freshProfiles', () => {
   it('drops ids already held and ids repeated within the import', () => {
-    const p = (id: string) => ({ id, name: id }) as never;
+    const p = (id: string) => ({ id, name: id });
     expect(freshProfiles(['a'], [p('a'), p('b'), p('b'), p('c')]).map((x) => x.id)).toEqual(['b', 'c']);
   });
 });

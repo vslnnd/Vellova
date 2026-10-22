@@ -1,7 +1,8 @@
 <script lang="ts">
   import { save as saveDialog } from '@tauri-apps/plugin-dialog';
   import { revealItemInDir } from '@tauri-apps/plugin-opener';
-  import { REASONS } from '../rename/session.svelte';
+  import { ui } from '../app.svelte';
+  import { REASONS } from '../shared/reasons';
   import { undoBatch } from '../shared/batches';
   import { ipc } from '../shared/ipc';
   import { splitPath } from '../shared/names';
@@ -9,6 +10,7 @@
   import { logToText } from '../shared/store';
   import type { Batch } from '../shared/types';
   import { island } from '../shell/islandState.svelte';
+  import { rerun } from '../split/session.svelte';
 
   let tab = $state<'batches' | 'log'>('batches');
   let tool = $state<'all' | 'rename' | 'split' | 'app'>('all');
@@ -31,6 +33,11 @@
   function show(b: Batch) {
     const it = b.items.find((i) => i.ok) ?? b.items[0];
     if (it) void revealItemInDir(b.undone && it.from ? it.from : it.to).catch(() => {});
+  }
+  async function runAgain(b: Batch) {
+    ui.tool = 'split';
+    ui.panel = null;
+    await rerun(b);
   }
   async function exportLog() {
     message = '';
@@ -77,6 +84,7 @@
       </summary>
       <div class="row">
         {#if b.undoable && !b.undone}<button class="btn small" disabled={!!island.activity} onclick={() => void undoBatch(b.id)}>Undo</button>{/if}
+        {#if b.rerun}<button class="btn small" disabled={!!island.activity} onclick={() => void runAgain(b)}>Run again</button>{/if}
         <button class="btn small" onclick={() => show(b)}>Show files</button>
       </div>
       <ul>
