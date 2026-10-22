@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gridOf, loadSource, type Grid } from '../src/lib/split/engine/grid';
-import { colLetter, findColumn, headerInfo } from '../src/lib/split/engine/header';
+import { colLetter, columnNames, findColumn, headerInfo } from '../src/lib/split/engine/header';
 
 const load = async (n: string) => gridOf(await loadSource('.xlsx', new Uint8Array(readFileSync(`test/fixtures/split/${n}`))), null);
 const mk = (rows: string[][]): Grid => ({ sheets: [], sheet: 'S', rows, merges: [] });
 const def = { mode: 'default' } as const;
+
+describe('columnNames', () => {
+  it('lists each name once (empty names are Column letters)', () => {
+    expect(columnNames(mk([['Region', 'Notes', 'Notes', '', 'Region'], ['a']]), def)).toEqual(['Region', 'Notes', 'Column D']);
+  });
+});
 
 describe('headerInfo', () => {
   it('default on simple.xlsx', async () => {

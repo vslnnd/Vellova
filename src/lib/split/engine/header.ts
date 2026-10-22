@@ -16,6 +16,11 @@ export function findColumn(columns: Column[], name: string): Column | undefined 
   return columns.find((c) => norm(c.name) === norm(name));
 }
 
+/** The non-empty column names, each once (the first of a repeated name is the one a split uses). */
+export const columnNames = (grid: Grid, header: SplitRules['header']): string[] => [
+  ...new Set(headerInfo(grid, header).columns.map((c) => c.name).filter((n) => n.trim())),
+];
+
 export function headerInfo(grid: Grid, header: SplitRules['header']): HeaderInfo {
   const row = header.mode === 'manual' ? header.row - 1 : 0;
   const n = row + 1;

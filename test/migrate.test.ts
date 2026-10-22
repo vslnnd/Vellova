@@ -90,7 +90,7 @@ describe('importing the previous rename app', () => {
 
   it('profile files: Vellova exports pass through, old files are mapped', () => {
     const ours = mapProfiles(PROFILES);
-    const split = { id: 's1', name: 'By city', desc: '', rules: { ...DEFAULT_SPLIT_RULES, column: 'City' }, archiveFolder: 'C:\done' };
+    const split = { id: 's1', name: 'By city', desc: '', rules: { ...DEFAULT_SPLIT_RULES, column: 'City' }, archiveFolder: 'C:\\done' };
     expect(importProfiles(JSON.stringify({ rename: ours, split: [] }))).toEqual({ rename: ours, split: [] });
     expect(importProfiles(JSON.stringify({ rename: ours, split: [split, { nope: 1 }] }))).toEqual({ rename: ours, split: [split] });
     expect(importProfiles(JSON.stringify({ split: [split] }))).toEqual({ rename: [], split: [split] });
@@ -101,17 +101,19 @@ describe('importing the previous rename app', () => {
 
   it('a Splitify array gives split profiles only, told apart by parameters or params', () => {
     const sp = [
-      { id: 'a', name: 'Cities', description: 'd', parameters: [{ value: 7, label: 'Leeds', payable: false }, { value: 'x' }], archiveFolder: 'C:\old' },
+      { id: 'a', name: 'Cities', description: 'd', parameters: [{ value: 7, label: 'Leeds', payable: false }, { value: 'x' }], archiveFolder: 'C:\\old' },
       { id: 'b', name: 'Legacy', params: [{ value: 'y', label: 5 }] },
     ];
-    const out = importProfiles(JSON.stringify(sp));
+    const out = importProfiles(JSON.stringify([...sp, { id: 3, name: 'Numeric', parameters: [] }, { id: 'c', parameters: [] }]));
     expect(out.rename).toEqual([]);
     expect(out.split.map((p) => [p.id, p.name, p.desc, p.archiveFolder, p.rules.mode])).toEqual([
-      ['splitify-a', 'Cities', 'd', 'C:\old', 'value'],
+      ['splitify-a', 'Cities', 'd', 'C:\\old', 'value'],
       ['splitify-b', 'Legacy', '', null, 'value'],
+      ['splitify-3', 'Numeric', '', null, 'value'],
     ]);
     expect(out.split[0].rules.params).toEqual([{ value: '7', label: 'Leeds', payable: false }, { value: 'x', label: '', payable: true }]);
     expect(out.split[1].rules.params).toEqual([{ value: 'y', label: '', payable: true }]);
+    expect(importProfiles('[]')).toEqual({ rename: [], split: [] });
   });
 });
 

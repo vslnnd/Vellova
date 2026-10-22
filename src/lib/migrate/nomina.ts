@@ -1,7 +1,7 @@
 import { DEFAULT_RULES, profileFromRules } from '../rename/engine/profile';
 import { splitProfile } from '../split/engine/profile';
 import { batchSummary, capHistory, isObj } from '../shared/store';
-import { isSplitifyProfiles, splitifyProfiles } from './splitify';
+import { profilesOf, splitifyItems } from './splitify';
 import type { Batch, BatchItem, Position, RenameProfile, Settings, SplitProfile } from '../shared/types';
 
 /** Where the previous rename app kept its data, relative to %APPDATA%. Order matters for planImport. */
@@ -115,7 +115,8 @@ function ownProfile(p: Record<string, any>): RenameProfile | null { // eslint-di
 
 /** A profiles file chosen in Profiles › Import: Vellova's own export, Splitify's profiles file, or the previous rename app's. */
 export function importProfiles(text: string): { rename: RenameProfile[]; split: SplitProfile[] } {
-  if (isSplitifyProfiles(text)) return { rename: [], split: splitifyProfiles(text) };
+  const sp = splitifyItems(text);
+  if (sp) return { rename: [], split: profilesOf(sp) };
   const v = parse(text);
   const o = obj(v);
   const items = Array.isArray(v) ? v : o.rename;
