@@ -79,12 +79,6 @@
     if (v === 'source') session.rules.folder = { mode: 'source' };
     else if (v.startsWith('f:')) session.rules.folder = { mode: 'folder', path: v.slice(2) };
   }
-  async function onfolder(e: Event & { currentTarget: HTMLSelectElement }) {
-    const el = e.currentTarget;
-    if (el.value !== 'choose') return setFolder(el.value);
-    await pickOutputFolder();
-    el.value = folderPath ? `f:${folderPath}` : 'source'; // cancelled: show the folder in use again
-  }
   function star() {
     if (!folderPath) return;
     data.settings.split.favourites = starred ? favourites.filter((f) => f !== folderPath) : [...favourites, folderPath];
@@ -112,7 +106,7 @@
 
   <div class="card">
     <span class="label" id="sp-mode">Mode</span>
-    <div class="seg" role="group" aria-labelledby="sp-mode">
+    <div class="seg modes" role="group" aria-labelledby="sp-mode">
       {#each MODES as [v, label] (v)}
         <button aria-pressed={rules.mode === v} onclick={() => (session.rules.mode = v)}>{label}</button>
       {/each}
@@ -225,12 +219,14 @@
     <div class="row chips">{#each pieces as p (p)}<span class="pill muted mono">{`{${p}}`}</span>{/each}</div>
     <label class="label" for="sp-folder">Folder</label>
     <div class="row nowrap">
-      <select id="sp-folder" class="field grow" value={folderPath ? `f:${folderPath}` : 'source'} onchange={onfolder}>
+      <select id="sp-folder" class="field grow" value={folderPath ? `f:${folderPath}` : 'source'} onchange={(e) => setFolder(e.currentTarget.value)}>
         <option value="source">Same as the source</option>
         {#each favourites as f (f)}<option value="f:{f}">{f}</option>{/each}
         {#if folderPath && !starred}<option value="f:{folderPath}">{folderPath}</option>{/if}
-        <option value="choose">Choose folder…</option>
       </select>
+      <button class="ib" aria-label="Choose folder…" title="Choose folder…" onclick={() => void pickOutputFolder()}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
+      </button>
       <button class="ib" aria-pressed={starred} disabled={!folderPath} aria-label={starred ? 'Remove from favourites' : 'Add to favourites'} title={starred ? 'Remove from favourites' : 'Add to favourites'} onclick={star}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill={starred ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" /></svg>
       </button>
@@ -257,6 +253,9 @@
   .settings { flex: 0 0 300px; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 0 2px 12px; }
   .seg { display: flex; flex-wrap: wrap; }
   .seg button { flex: 1 0 auto; white-space: nowrap; }
+  /* five modes on one line in the 300 px column */
+  .modes { flex-wrap: nowrap; gap: 1px; }
+  .modes button { flex: 1 1 auto; padding: 0 5px; font-size: 12.5px; }
   .grow { flex: 1; min-width: 0; }
   .nowrap { flex-wrap: nowrap; }
   .num { width: 72px; }

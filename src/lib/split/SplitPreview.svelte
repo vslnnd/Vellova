@@ -100,7 +100,8 @@
               {@const [tone, label] = PILL[it.status]}
               <div class="out" class:dim={it.status === 'skipped'} class:on={open === it.id}>
                 <button class="open" aria-expanded={open === it.id} onclick={() => (open = open === it.id ? null : it.id)}>
-                  <span class="oname mono" title={it.name}>{it.name ?? 'No name'}</span>
+                  <!-- a line may break after each `_`; overflow-wrap is only the fallback -->
+                  <span class="oname mono" title={it.name}>{#each (it.name ?? 'No name').split('_') as part, k (k)}{#if k}_<wbr />{/if}{part}{/each}</span>
                   <span class="meta">
                     {plural(it.rows, 'row', 'rows')}{#if it.label !== undefined}{` · ${it.label}`}{/if}{#if it.share !== undefined}{` · ${it.share}%`}{/if}
                   </span>

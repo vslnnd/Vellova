@@ -94,7 +94,7 @@
     {/if}
     <span class="grow"></span>
     <button class="btn" disabled={!lastUndoable(data.history) || !!island.activity} onclick={() => void undoLast()}>Undo last batch</button>
-    <button class="btn primary" disabled={!outputs.length || session.loading || session.dirty || session.busy} onclick={() => void runBatch()}>
+    <button class="btn primary" disabled={!outputs.length || session.loading || session.dirty || session.busy || !!island.activity} onclick={() => void runBatch()}>
       Split {sources} {sources === 1 ? 'file' : 'files'}
     </button>
   </footer>

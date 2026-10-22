@@ -48,7 +48,7 @@
         </thead>
         <tbody>
           {#each rows as r, i (i)}
-            <tr tabindex="0" aria-selected={chosen === i + 1} aria-label="Row {i + 1}" class:on={chosen === i + 1} onclick={() => pick(i)} onkeydown={(e) => onkey(e, i)}>
+            <tr tabindex="0" aria-current={chosen === i + 1 ? 'true' : undefined} class:on={chosen === i + 1} onclick={() => pick(i)} onkeydown={(e) => onkey(e, i)}>
               <th>{i + 1}</th>
               {#each { length: width } as _, c (c)}<td title={r[c] ?? ''}>{r[c] ?? ''}</td>{/each}
             </tr>

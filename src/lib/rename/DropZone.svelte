@@ -9,11 +9,11 @@
     onfiles = pickFiles,
     onfolder = pickFolder,
     recursive = true,
-  }: { title?: string; accept?: string; onfiles?: () => Promise<void>; onfolder?: () => Promise<void>; recursive?: boolean } = $props();
+    tour,
+  }: { title?: string; accept?: string; onfiles?: () => Promise<void>; onfolder?: () => Promise<void>; recursive?: boolean; tour?: string } = $props();
 </script>
 
-<!-- the tour points at Rename's drop zone only -->
-<div class="drop" data-tour={recursive ? 'drop' : undefined}>
+<div class="drop" data-tour={tour}>
   <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5" /><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" /></svg>
   <p class="big">{title}</p>
   {#if accept}<p class="hint">{accept}</p>{/if}

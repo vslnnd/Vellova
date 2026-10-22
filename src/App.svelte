@@ -7,12 +7,13 @@
   import Settings from './lib/panels/Settings.svelte';
   import { data } from './lib/shared/state.svelte';
   import Rename from './lib/rename/Rename.svelte';
-  import { cancelActivity as cancelRename } from './lib/rename/session.svelte';
+  import { cancelActivity as cancelRename, session as renameSession } from './lib/rename/session.svelte';
+  import { cancelTarget } from './lib/shell/cancel';
   import Panel from './lib/shell/Panel.svelte';
   import { shortcut } from './lib/shell/shortcuts';
   import TitleBar from './lib/shell/TitleBar.svelte';
   import Split from './lib/split/Split.svelte';
-  import { cancelActivity as cancelSplit } from './lib/split/session.svelte';
+  import { cancelActivity as cancelSplit, session as splitSession } from './lib/split/session.svelte';
   import Tour from './lib/tour/TourLayer.svelte'; // not Tour.svelte: on Windows it would shadow the tour.svelte(.ts) module
   import { current, tour, tourActive, undoTour } from './lib/tour/tour.svelte';
   import { restartToUpdate, scheduleUpdates } from './lib/updater';
@@ -21,8 +22,8 @@
   if (import.meta.env.PROD) scheduleUpdates(true);
 
   const closePanel = () => (ui.panel = null);
-  /** The island's Cancel stops what the tool on screen is doing. */
-  const cancel = () => (ui.tool === 'split' ? cancelSplit() : cancelRename());
+  /** The island's Cancel goes to the session that owns its activity, whichever tool is on screen. */
+  const cancel = () => (cancelTarget(splitSession, renameSession, ui.tool) === 'split' ? cancelSplit() : cancelRename());
 
   const inText = () => !!document.activeElement?.matches('input:not([type=checkbox]):not([type=radio]), textarea, select');
 

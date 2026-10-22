@@ -53,7 +53,7 @@
   <div class="cols">
     <RenameSettings />
     <div class="right">
-      {#if session.files.length}<Preview />{:else}<DropZone />{/if}
+      {#if session.files.length}<Preview />{:else}<DropZone tour="drop" />{/if}
     </div>
   </div>
   <footer>
@@ -65,7 +65,7 @@
     {/if}
     <span class="grow"></span>
     <button class="btn" disabled={!lastUndoable(data.history) || !!island.activity} onclick={() => void undoLast()}>Undo last batch</button>
-    <button class="btn primary" data-tour="apply" disabled={!sum.ops || session.loading || session.dirty || session.busy} onclick={() => void runBatch()}>{sum.label}</button>
+    <button class="btn primary" data-tour="apply" disabled={!sum.ops || session.loading || session.dirty || session.busy || !!island.activity} onclick={() => void runBatch()}>{sum.label}</button>
   </footer>
   {#if dragging}<div class="drop" aria-hidden="true">Drop to add</div>{/if}
 </section>
