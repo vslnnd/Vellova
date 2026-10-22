@@ -44,7 +44,7 @@ export function headerInfo(grid: Grid, header: SplitRules['header']): HeaderInfo
   const empty = columns.filter((c) => (head[c.index] ?? '').trim() === '').length;
   // ponytail: a stray cell right of the header (formatted.xlsx F4) must not warn, so trailing blanks only count when they are half the columns
   const interior = columns.some((c) => c.index < head.length && (head[c.index] ?? '').trim() === '');
-  if (empty && (interior || empty * 2 >= columns.length)) warnings.push(`Row ${n} has ${empty} empty column names.`);
+  if (empty && (interior || empty * 2 >= columns.length)) warnings.push(`Row ${n} has ${empty} empty column name${empty === 1 ? '' : 's'}.`);
   const seen = new Set<string>();
   for (const c of columns) {
     if (c.name !== `Column ${colLetter(c.index)}` || (head[c.index] ?? '').trim() !== '') {

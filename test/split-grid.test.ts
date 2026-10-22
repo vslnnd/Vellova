@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import * as XLSX from 'xlsx';
 import { cellText, csvNumber, decodeCsv, gridOf, loadSource } from '../src/lib/split/engine/grid';
 
 const fx = (n: string) => new Uint8Array(readFileSync(`test/fixtures/split/${n}`));
@@ -54,6 +55,16 @@ describe('grid', () => {
     expect(g.sheets.map((s) => s.name)).toEqual(['Alpha', 'Beta']);
     expect(g.rows[1]).toEqual(['North', '10']);
     expect(gridOf(src, 'Beta').rows[1]).toEqual(['Ana Test', '5']);
+  });
+
+  it('reads xls dates without a time zone shift', async () => {
+    // fails without UTC: true only when run east of UTC (this machine is UTC+2)
+    const ws = XLSX.utils.aoa_to_sheet([['When'], [46027]]);
+    ws.A2.z = 'yyyy-mm-dd';
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'S');
+    const bytes = new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'biff8' }));
+    expect(gridOf(await loadSource('.xls', bytes), null).rows[1]).toEqual(['2026-01-05']);
   });
 
   it('reads csv with a quoted comma as one field', async () => {

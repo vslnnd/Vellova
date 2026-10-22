@@ -26,6 +26,9 @@ describe('renderName', () => {
     expect(renderName('{x}_{file}', { file: 'Q3' })).toBe('{x}_Q3');
     expect(renderName('{group}', {})).toBe('{group}');
   });
+  it('replaces piece characters only in group and person', () => {
+    expect(renderName('{file}_{sheet}_{group}_{person}', { file: '50%', sheet: 'Q%', group: '1%', person: 'a?' })).toBe('50%_Q%_1-_a-');
+  });
 });
 
 describe('by value', () => {
@@ -91,6 +94,11 @@ describe('people', () => {
     expect(names(c)).toEqual(['20261017_Q3_assigned.csv', '20261017_Q3_summary.csv']);
     expect(c[0].spec).not.toHaveProperty('summary');
   });
+  it('a group bigger than a share warns on the first output', () => {
+    const g = grid([['K'], ['x'], ['x'], ['x'], ['y']]);
+    const items = run(rules({ mode: 'people', column: 'K', assign: 'groups', summary: false, people: people.slice(0, 2) }), { [Q]: g });
+    expect(items[0].detail).toBe(`"x" has 3 rows, more than Ann's share of 2.`);
+  });
   it('no people', () => {
     expect(run(rules({ mode: 'people' }), { [Q]: four })[0].status).toBe('attention');
   });
@@ -127,6 +135,10 @@ describe('format and folders', () => {
   it('subfolder for people', () => {
     const r = rules({ mode: 'people', people: [{ name: 'Ann', weight: 1 }], summary: false, subfolder: true });
     expect(run(r, { [Q]: simple })[0].op!.to).toBe('C:\\in\\Ann\\20261017_Q3_Ann.xlsx');
+  });
+  it('a subfolder with trailing dots is not a reserved name', () => {
+    const r = rules({ mode: 'people', people: [{ name: 'CON .', weight: 1 }], summary: false, subfolder: true });
+    expect(run(r, { [Q]: simple })[0].op!.to).toBe('C:\\in\\CON_\\20261017_Q3_CON ..xlsx');
   });
 });
 

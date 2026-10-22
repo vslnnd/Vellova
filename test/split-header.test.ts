@@ -53,7 +53,8 @@ describe('headerInfo', () => {
   it('empty names and past the end', () => {
     const h = headerInfo(mk([['A', 'B', '', 'D'], ['1']]), def);
     expect(h.columns[2].name).toBe('Column C');
-    expect(h.warnings).toEqual(['Row 1 has 1 empty column names.']);
+    expect(h.warnings).toEqual(['Row 1 has 1 empty column name.']);
+    expect(headerInfo(mk([['A', '', '', 'D'], ['1']]), def).warnings).toEqual(['Row 1 has 2 empty column names.']);
     expect(headerInfo(mk([['A']]), { mode: 'manual', row: 99 })).toEqual({
       row: 98, columns: [], data: [], warnings: ['Row 99 is past the end of the sheet.'],
     });

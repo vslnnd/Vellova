@@ -55,7 +55,7 @@ export function decodeCsv(bytes: Uint8Array): { text: string; encoding: 'utf-8' 
 const valueSheets = (wb: XLSX.WorkBook) =>
   wb.SheetNames.map((name) => ({
     name,
-    rows: XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: true }),
+    rows: XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: true, UTC: true }),
   }));
 
 export async function loadSource(ext: string, bytes: Uint8Array): Promise<Source> {

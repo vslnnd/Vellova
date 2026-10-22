@@ -36,11 +36,16 @@ const PIECE = /[\\/?%*:|"<>]/g;
 
 /** Fills {date} {file} {group} {person} {part} {sheet}; unknown or unset keys stay as typed. */
 export function renderName(template: string, vars: Vars): string {
-  return sanitize(template.replace(/\{(\w+)\}/g, (m, k: string) => (Object.hasOwn(vars, k) ? (vars as Record<string, string>)[k].replace(PIECE, '-') : m)));
+  return sanitize(template.replace(/\{(\w+)\}/g, (m, k: string) => {
+    if (!Object.hasOwn(vars, k)) return m;
+    const v = (vars as Record<string, string>)[k];
+    // as Splitify: only the cell-derived pieces; {file} and {sheet} are already valid names
+    return k === 'group' || k === 'person' ? v.replace(PIECE, '-') : v;
+  }));
 }
 
 /** One path piece for a subfolder: it can never be empty, `.`, `..` or hold a separator. */
-const piece = (s: string) => sanitize(s.replace(PIECE, '-')).replace(/[. ]+$/, '') || '_';
+const piece = (s: string) => sanitize(s.replace(PIECE, '-').replace(/[. ]+$/, '')) || '_';
 
 const ymd = (d: Date) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 
@@ -131,10 +136,12 @@ export function planSplit(input: SplitPlanInput): SplitItem[] {
         if (!people.length) return [fileItem(source, 'attention', { reason: 'no-value', detail: 'Add the people to split between.' })];
         let who: number[];
         let groupsBy: number[];
+        const notes: string[] = [];
         if (rules.assign === 'groups') {
           const a = keepGroups(data.map((_, i) => norm(cell(i))), people);
           who = a.person;
           groupsBy = a.groups;
+          notes.push(...a.warnings);
         } else {
           who = chunks(evenBlocks(data.length, people)).flatMap((rows, p) => rows.map(() => p));
           groupsBy = people.map(() => 0);
@@ -151,9 +158,10 @@ export function planSplit(input: SplitPlanInput): SplitItem[] {
         } else {
           drafts = people.flatMap((p, i) => (mine[i].length ? [{ rows: mine[i].length, spec: { kind: 'rows' as const, rows: mine[i] }, template: tpl, vars: { person: p.name }, sub: p.name, label: p.name, share: summary[i].share }] : []));
           const none = people.filter((_, i) => !mine[i].length).map((p) => p.name);
-          if (none.length && drafts.length) drafts[0].detail = `${none.join(', ')} got no rows.`;
+          if (none.length) notes.push(`${none.join(', ')} got no rows.`);
           if (rules.summary) drafts.push({ rows: summary.length, spec: { kind: 'summary', summary }, template: SUMMARY_TEMPLATE, vars: {} });
         }
+        if (notes.length && drafts.length) drafts[0].detail = notes.join(' ');
       }
     }
     if (!drafts.length) return [fileItem(source, 'skipped', { detail: 'Nothing to write.' })];
