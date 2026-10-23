@@ -169,7 +169,7 @@
                 <span class="state">Off</span>
                 <button class="btn small" data-part="archive" onclick={() => (ui.panel = 'settings')}>Settings</button>
               {:else if profile}
-                <span class="state mono clip" title={profile.archiveFolder ?? undefined}>{profile.archiveFolder ?? 'Off'}</span>
+                <span class="state mono clip" title={profile.archiveFolder ?? undefined}>{profile.archiveFolder ?? 'None'}</span>
                 <button class="btn small" data-part="archive" onclick={() => void chooseArchiveFolder(profile)}>Choose…</button>
               {:else}
                 <span class="state">Needs a profile</span>

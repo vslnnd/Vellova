@@ -62,7 +62,7 @@
       <div class="seg" role="group" aria-labelledby="sp-head">
         <button data-part={rules.header.mode === 'default' ? 'header' : undefined} aria-pressed={rules.header.mode === 'default'} onclick={() => (session.rules.header = { mode: 'default' })}>Row 1</button>
         <button data-part={rules.header.mode === 'manual' ? 'header' : undefined} aria-pressed={rules.header.mode === 'manual'} onclick={() => onpick()}>
-          {rules.header.mode === 'manual' ? `Row ${rules.header.row}` : 'Manual…'}
+          {rules.header.mode === 'manual' && rules.header.row !== 1 ? `Row ${rules.header.row}` : 'Manual…'}
         </button>
       </div>
     </div>
@@ -72,7 +72,7 @@
     <span class="label" id="sp-save-l">Save to</span>
     <div class="row nowrap">
       <button class="dd clip" data-part="save" id="sp-folder-b" aria-labelledby="sp-save-l sp-folder-b" title={folderPath || undefined} popovertarget="sp-folder-pop" style="anchor-name: --sp-folder">{folderPath || 'Same as the source'}</button>
-      <button class="dd" id="sp-format-b" aria-labelledby="sp-save-l sp-format-b" popovertarget="sp-format-pop" style="anchor-name: --sp-format">{FORMATS.find(([v]) => v === rules.format)?.[1]}</button>
+      <button class="dd" aria-label="Format: {FORMATS.find(([v]) => v === rules.format)?.[1]}" popovertarget="sp-format-pop" style="anchor-name: --sp-format">{FORMATS.find(([v]) => v === rules.format)?.[1]}</button>
       <button class="dd" popovertarget="sp-taken-pop" style="anchor-name: --sp-taken">If taken: {CONFLICTS.find(([v]) => v === rules.conflict)?.[2]}</button>
     </div>
     <div class="pop folder" id="sp-folder-pop" popover style="position-anchor: --sp-folder">
