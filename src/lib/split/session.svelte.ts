@@ -6,6 +6,7 @@ import { REASONS } from '../shared/reasons';
 import { data, flush, log, save } from '../shared/state.svelte';
 import { putBackBatch } from '../shared/store';
 import type { Batch, BatchItem, FileInfo, Op, Reason, SplitProfile, SplitRules } from '../shared/types';
+import { openTarget } from '../shell/island';
 import { island, send } from '../shell/islandState.svelte';
 import { mergeFiles, pathKey } from '../rename/engine/files';
 import { movedUnjournaled } from '../rename/engine/planner';
@@ -497,7 +498,9 @@ export async function runBatch(only?: string[]) {
   // after the batch is current and recorded, so its `done` outputs count
   settle([...ranSources, ...archiveOnly, ...oldArchives.map(sourceOf)]);
   log({ level: 'info', tool: 'split', message: b.summary });
-  send({ type: 'finish', text: b.summary, attention: plan.items.filter((i) => i.status === 'attention').length });
+  // the outputs only: an archived source is not something this batch made
+  const open = openTarget(b.items.filter((i) => i.ok && !i.archived).map((i) => i.to));
+  send({ type: 'finish', text: b.summary, attention: plan.items.filter((i) => i.status === 'attention').length, open });
 }
 
 export const applyFixes = () => runBatch([...session.fixed]);

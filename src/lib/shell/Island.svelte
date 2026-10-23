@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { openPath } from '@tauri-apps/plugin-opener';
   import { flushSync } from 'svelte';
   import { setTheme, ui, type PanelName } from '../app.svelte';
-  import { data, save } from '../shared/state.svelte';
+  import { data, log, save } from '../shared/state.svelte';
   import { chips, layer, layerText, noticeText, TIMEOUT_MS, type Layer, type Notice } from './island';
   import { island, send } from './islandState.svelte';
   import { switchTheme } from './theme';
@@ -15,13 +16,32 @@
   const pct = $derived(island.activity?.total ? (100 * island.activity.done) / island.activity.total : 0);
   const w: Partial<Record<Layer, number>> = $state({});
 
+  // the pointer is over the island, or keyboard focus is in the Done layer: Done stays until both end
+  let over = $state(false);
+  let focus = $state(false);
+  // a focused button that the layer hid takes no blur with it
+  $effect(() => {
+    if (active !== 'done') focus = false;
+  });
+
   // notices fold into their chip after a while; "restored" just goes away
   $effect(() => {
     const ms = TIMEOUT_MS[active];
-    if (!ms || (active === 'done' && holdDone())) return;
+    if (!ms || (active === 'done' && (holdDone() || over || focus))) return;
     const t = setTimeout(() => send({ type: 'collapse' }), ms);
     return () => clearTimeout(t);
   });
+
+  async function openIt(what: 'folder' | 'file') {
+    const path = island.opened?.[what];
+    if (!path) return;
+    try {
+      await openPath(path);
+    } catch (e) {
+      log({ level: 'warn', tool: 'app', file: path, message: `Couldn't open the ${what}.`, detail: String(e) });
+      send({ type: 'restored', text: "Couldn't open · see History › Log" });
+    }
+  }
 
   const toggle = (p: PanelName) => (ui.panel = ui.panel === p ? null : p);
   function review() {
@@ -44,7 +64,7 @@
   };
 </script>
 
-<nav class="island" class:attn={active === 'attention'} class:okpulse={active === 'done'} aria-label="Main" style:width="{(w[active] ?? 380) + 2}px">
+<nav class="island" class:attn={active === 'attention'} class:okpulse={active === 'done'} aria-label="Main" style:width="{(w[active] ?? 380) + 2}px" onpointerenter={() => (over = true)} onpointerleave={() => (over = false)}>
   <span class="sr" aria-live="polite">{text}</span>
 
   <div class="layer" class:on={active === 'tools'} bind:offsetWidth={w.tools}>
@@ -97,12 +117,16 @@
     {#if island.activity?.cancellable}<button class="out quiet" onclick={oncancel}>Cancel</button>{/if}
   </div>
 
-  <div class="layer note" class:on={active === 'done'} bind:offsetWidth={w.done}>
+  <div class="layer note" class:on={active === 'done'} bind:offsetWidth={w.done} onfocusin={(e) => (focus = (e.target as Element).matches(':focus-visible'))} onfocusout={() => (focus = false)}>
     <span class="icon">
       {#if active === 'done'}<svg class="check" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>{/if}
     </span>
     <span class="msg">{island.done}</span>
-    <button class="act" data-tour="undo" onclick={onundo}>Undo</button>
+    <span class="acts">
+      <button class="out" onclick={() => void openIt('folder')}>Open folder</button>
+      {#if island.opened?.file}<button class="out" onclick={() => void openIt('file')}>Open file</button>{/if}
+      <button class="act" data-tour="undo" onclick={onundo}>Undo</button>
+    </span>
   </div>
 
   <div class="layer note" class:on={active === 'attention'} bind:offsetWidth={w.attention}>
@@ -155,6 +179,7 @@
   }
   .layer.note { gap: 10px; padding: 0 6px 0 14px; }
   .layer .ib { width: 36px; height: 36px; }
+  .acts { display: flex; align-items: center; gap: 4px; }
   .msg, .wtext { font-size: 13.5px; font-weight: 500; }
   .wtext { min-width: 140px; font-variant-numeric: tabular-nums; }
   .icon { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chips, INITIAL, layer, layerText, reduce, TIMEOUT_MS, type IslandEvent, type IslandState } from '../src/lib/shell/island';
+import { chips, INITIAL, layer, layerText, openTarget, reduce, TIMEOUT_MS, type IslandEvent, type IslandState } from '../src/lib/shell/island';
 
 const run = (...events: IslandEvent[]) => events.reduce(reduce, INITIAL);
 const start: IslandEvent = { type: 'start', label: 'Renaming', total: 12, cancellable: true };
@@ -72,5 +72,21 @@ describe('island', () => {
     expect(r.attention).toBe(0);
     expect(r.update).toBe('0.1.1');
     expect(layer(r)).toBe('tools');
+  });
+
+  it('finish carries what Open folder and Open file act on, and reset clears it', () => {
+    const open = { folder: 'C:\\out', file: null };
+    const s = run(start, { type: 'finish', text: '2 files renamed', attention: 0, open });
+    expect(s.opened).toEqual(open);
+    expect(run(start, { type: 'finish', text: '2 files renamed', attention: 0 }).opened).toBeNull();
+    expect(reduce(s, { type: 'reset' }).opened).toBeNull();
+    expect(reduce(s, { type: 'restored', text: '2 names restored' }).opened).toBeNull();
+  });
+
+  it('openTarget: none, one file, several files, a drive root', () => {
+    expect(openTarget([])).toBeNull();
+    expect(openTarget(['C:\\out\\a.pdf'])).toEqual({ folder: 'C:\\out', file: 'C:\\out\\a.pdf' });
+    expect(openTarget(['C:\\out\\a.pdf', 'D:\\other\\b.pdf'])).toEqual({ folder: 'C:\\out', file: null });
+    expect(openTarget(['C:\\a.pdf'])?.folder).toBe('C:\\');
   });
 });

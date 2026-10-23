@@ -1,11 +1,26 @@
+import { splitPath } from '../shared/names';
+
 export type Notice = 'attention' | 'done' | 'update';
 export type Layer = 'tools' | 'working' | Notice | 'restarting' | 'restored';
+
+/** What the Done layer's Open folder and Open file act on; `file` only when the batch made exactly one. */
+export type OpenTarget = { folder: string; file: string | null };
+
+/** The first output's folder, plus the file itself when it is the only one; null when nothing was made. */
+export function openTarget(paths: string[]): OpenTarget | null {
+  if (!paths.length) return null;
+  // "C:" alone names the drive's current folder, not its root
+  const folder = splitPath(paths[0]).dir.replace(/^([A-Za-z]:)$/, '$1\\');
+  return { folder, file: paths.length === 1 ? paths[0] : null };
+}
 
 export type IslandState = {
   /** a running job: reading files, applying or undoing a batch */
   activity: { label: string; done: number; total: number; cancellable: boolean } | null;
   /** the last batch ("12 files renamed"); shown as the Undo chip */
   done: string | null;
+  /** what the last batch made, for the Done layer's Open buttons */
+  opened: OpenTarget | null;
   /** how many files need attention */
   attention: number;
   /** version of a downloaded update */
@@ -18,7 +33,7 @@ export type IslandState = {
 export type IslandEvent =
   | { type: 'start'; label: string; total: number; cancellable: boolean }
   | { type: 'progress'; done: number; total: number }
-  | { type: 'finish'; text: string | null; attention: number }
+  | { type: 'finish'; text: string | null; attention: number; open?: OpenTarget | null }
   | { type: 'stop' }
   | { type: 'collapse' }
   | { type: 'attention'; count: number }
@@ -28,7 +43,7 @@ export type IslandEvent =
   | { type: 'clearTransient' }
   | { type: 'reset' };
 
-export const INITIAL: IslandState = { activity: null, done: null, attention: 0, update: null, transient: null, open: null };
+export const INITIAL: IslandState = { activity: null, done: null, opened: null, attention: 0, update: null, transient: null, open: null };
 
 /** How long each layer stays before it folds (spec: done 4 s, attention 6 s, update 3.5 s). */
 export const TIMEOUT_MS: Partial<Record<Layer, number>> = { done: 4000, attention: 6000, update: 3500, restored: 2200 };
@@ -40,7 +55,7 @@ export function reduce(s: IslandState, e: IslandEvent): IslandState {
     case 'progress':
       return s.activity ? { ...s, activity: { ...s.activity, done: e.done, total: e.total } } : s;
     case 'finish':
-      return { ...s, activity: null, done: e.text ?? s.done, attention: e.attention, open: e.attention ? 'attention' : e.text ? 'done' : null };
+      return { ...s, activity: null, done: e.text ?? s.done, opened: e.text ? (e.open ?? null) : s.opened, attention: e.attention, open: e.attention ? 'attention' : e.text ? 'done' : null };
     case 'stop':
       return { ...s, activity: null };
     case 'collapse':
@@ -52,7 +67,7 @@ export function reduce(s: IslandState, e: IslandEvent): IslandState {
     case 'restarting':
       return { ...s, transient: { kind: 'restarting', text: 'Restarting…' } };
     case 'restored':
-      return { ...s, done: null, open: null, transient: { kind: 'restored', text: e.text } };
+      return { ...s, done: null, opened: null, open: null, transient: { kind: 'restored', text: e.text } };
     case 'clearTransient':
       return { ...s, transient: null };
     case 'reset':

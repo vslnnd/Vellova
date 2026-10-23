@@ -7,6 +7,7 @@ import { data, flush, log, save } from '../shared/state.svelte';
 import { REASONS } from '../shared/reasons';
 import { putBackBatch } from '../shared/store';
 import type { FileInfo, Reason, RenameProfile, Step } from '../shared/types';
+import { openTarget } from '../shell/island';
 import { island, send } from '../shell/islandState.svelte';
 import type { Grid } from '../split/engine/grid';
 import { readGrid } from '../split/sheets';
@@ -466,7 +467,9 @@ export async function runBatch(only?: string[]) {
   session.batch = id;
   const b = recordBatch({ ...meta, time: Date.now(), items: batch, undoable: batch.some((x) => x.ok) });
   log({ level: 'info', tool: 'rename', message: b.summary });
-  send({ type: 'finish', text: b.summary, attention: plan.items.filter((i) => i.status === 'attention').length });
+  // from the merged batch, so Open matches the summary after Apply fixes too
+  const open = openTarget(b.items.filter((i) => i.ok).map((i) => i.to));
+  send({ type: 'finish', text: b.summary, attention: plan.items.filter((i) => i.status === 'attention').length, open });
 }
 
 export const applyFixes = () => runBatch([...session.fixed]);
