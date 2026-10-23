@@ -1,9 +1,11 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { extOf } from '../shared/names';
   import { data } from '../shared/state.svelte';
   import ProfileBar from '../shared/ProfileBar.svelte';
   import type { Step } from '../shared/types';
   import { island } from '../shell/islandState.svelte';
+  import { PDF } from './engine/files';
   import { NEW_STEP } from './engine/steps';
   import { stepView } from './RenameSettings.svelte';
   import { pickCopyFolder, reset, saveProfile, session, useProfile } from './session.svelte';
@@ -14,6 +16,7 @@
 
   const rules = $derived(session.rules);
   const dest = $derived(rules.destination);
+  const firstPdf = $derived(session.files.find((f) => extOf(f.path) === PDF)?.path);
 
   function pick(id: string | null) {
     const p = data.profiles.rename.find((x) => x.id === id);
@@ -23,6 +26,7 @@
 
   /** Step 1 becomes a PDF value or a list step; a source step of the other kind is replaced, a modifier stays after it. */
   async function nameFrom(kind: 'pdf' | 'list') {
+    session.picking = null;
     const steps = session.rules.steps;
     const t = steps[0]?.type;
     const keep = kind === 'list' ? t === 'list' : t === 'pdfValue' || t === 'pdfPattern';
@@ -56,9 +60,9 @@
   <div class="grp">
     <span class="label" id="rn-from">Name from</span>
     <div class="seg" role="group" aria-labelledby="rn-from">
-      <button aria-pressed={rules.steps[0]?.type !== 'list'} onclick={() => void nameFrom('pdf')}>Text in the PDF</button>
-      <button disabled>Click on the PDF</button>
-      <button aria-pressed={rules.steps[0]?.type === 'list'} onclick={() => void nameFrom('list')}>A list</button>
+      <button aria-pressed={!session.picking && rules.steps[0]?.type !== 'list'} onclick={() => void nameFrom('pdf')}>Text in the PDF</button>
+      <button aria-pressed={!!session.picking} disabled={!firstPdf} title={firstPdf ? undefined : 'Add a PDF first'} onclick={() => (session.picking ??= firstPdf!)}>Click on the PDF</button>
+      <button aria-pressed={!session.picking && rules.steps[0]?.type === 'list'} onclick={() => void nameFrom('list')}>A list</button>
     </div>
   </div>
   <span class="vr"></span>

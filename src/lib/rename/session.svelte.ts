@@ -348,6 +348,7 @@ function forget(paths: string[]) {
   session.files = session.files.filter((f) => !gone.has(f.path));
   session.skipped = session.skipped.filter((p) => !gone.has(p));
   session.fixed = session.fixed.filter((p) => !gone.has(p));
+  if (session.picking && gone.has(session.picking)) session.picking = null;
   for (const p of paths) {
     delete session.overrides[p];
     delete session.failures[p];

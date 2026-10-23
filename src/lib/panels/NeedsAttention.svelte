@@ -13,6 +13,7 @@
   const TYPE: Reason[] = ['keyword-not-found', 'no-value', 'no-text', 'no-pattern', 'not-in-list'];
   const RETRY: Reason[] = ['locked', 'exists', 'internal'];
   const SHOW: Reason[] = ['permission', 'missing'];
+  const PICK: Reason[] = ['keyword-not-found', 'no-value'];
 
   const isSplit = $derived(ui.tool === 'split');
   const tool = $derived(isSplit ? split : rename);
@@ -36,6 +37,11 @@
     return r?.ok ? columnNames(r.grid, split.session.rules.header) : [];
   };
   const name = (p: string) => splitPath(p).name;
+
+  function pickOnPdf(path: string) {
+    ui.panel = null;
+    rename.session.picking = path;
+  }
 
   function apply() {
     ui.panel = null;
@@ -65,6 +71,7 @@
           <div class="row">
             {#if TYPE.includes(reason)}
               <input class="field mono grow" placeholder="Type a name" aria-label="New name for {name(it.source)}" onchange={(e) => rename.setName(it.source, e.currentTarget.value, true)} />
+              {#if !isSplit && PICK.includes(reason)}<button class="btn small" onclick={() => pickOnPdf(it.source)}>Click value on PDF</button>{/if}
             {:else if reason === 'no-match'}
               <select class="field grow" aria-label="PDF for {name(it.source)}" onchange={(e) => e.currentTarget.value && rename.pickPdf(it.source, e.currentTarget.value)}>
                 <option value="">Pick its PDF…</option>

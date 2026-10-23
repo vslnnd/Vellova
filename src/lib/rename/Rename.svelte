@@ -8,6 +8,7 @@
   import { island, send } from '../shell/islandState.svelte';
   import DropZone from './DropZone.svelte';
   import { summary } from './engine/planner';
+  import PdfPicker from './PdfPicker.svelte';
   import Preview from './Preview.svelte';
   import RenameBar from './RenameBar.svelte';
   import RenameSettings from './RenameSettings.svelte';
@@ -52,7 +53,7 @@
   <div class="cols">
     <RenameSettings />
     <div class="right">
-      {#if session.files.length}<Preview />{:else}<DropZone tour="drop" />{/if}
+      {#if session.picking}<PdfPicker />{:else if session.files.length}<Preview />{:else}<DropZone tour="drop" />{/if}
     </div>
   </div>
   <footer>
