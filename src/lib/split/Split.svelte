@@ -9,6 +9,7 @@
   import { island, send } from '../shell/islandState.svelte';
   import type { Grid } from './engine/grid';
   import HeaderPicker from './HeaderPicker.svelte';
+  import SplitBar from './SplitBar.svelte';
   import { addPaths, invalidate, pickFiles, pickFolder, plan, refresh, runBatch, session } from './session.svelte';
   import SplitPreview from './SplitPreview.svelte';
   import SplitSettings from './SplitSettings.svelte';
@@ -72,12 +73,10 @@
 </script>
 
 <section class="split">
-  <header>
-    <h1>Split</h1>
-    <p class="hint">Rules on the left, every output file previewed on the right.</p>
-  </header>
+  <header><h1>Split</h1></header>
+  <SplitBar {grids} onpick={choose} />
   <div class="cols">
-    <SplitSettings {grids} onpick={choose} />
+    <SplitSettings {grids} />
     <div class="right">
       {#if session.files.length}
         <SplitPreview {grids} onpick={choose} />

@@ -8,7 +8,8 @@ const FORMAT = { same: 'same type', xlsx: '.xlsx', csv: '.csv' };
 export function splitSummary(r: SplitRules, archive: string | null): Summary {
   const assigned = r.mode === 'people' && r.peopleOutput === 'column';
   const folder = r.folder.mode === 'folder' ? r.folder.path : 'Same folder as the source';
-  const lines: Summary['lines'] = [{ key: 'mode', label: 'Split by', text: MODE[r.mode] }];
+  const by = r.mode === 'value' && r.column.trim() ? `${MODE.value} (${r.column.trim()})` : MODE[r.mode];
+  const lines: Summary['lines'] = [{ key: 'mode', label: 'Split by', text: by }];
   if (r.mode !== 'sheets') lines.push({ key: 'header', label: 'Header', text: `Row ${r.header.mode === 'manual' ? r.header.row : 1}` });
   lines.push(
     { key: 'save', label: 'Save to', text: `${folder} · ${FORMAT[r.format]} · if taken: ${{ add: 'add (1)', skip: 'skip', replace: 'replace' }[r.conflict]}` },

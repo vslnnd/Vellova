@@ -83,6 +83,7 @@
       {/if}
     </div>
   </div>
+  <span class="vr"></span>
   <div class="grp">
     <label class="label" for="rn-conflict">If taken</label>
     <select id="rn-conflict" class="dd" data-part="conflict" bind:value={session.rules.conflict}>
@@ -91,6 +92,7 @@
       <option value="replace">Replace (Recycle Bin)</option>
     </select>
   </div>
+  <span class="vr"></span>
   <div class="grp">
     <label class="label" for="rn-pair">Matching files</label>
     <select id="rn-pair" class="dd" data-part="pair" value={rules.pair ? 'yes' : 'no'} onchange={(e) => (session.rules.pair = e.currentTarget.value === 'yes')}>

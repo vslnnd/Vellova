@@ -91,9 +91,24 @@ h2 { font-size: 16px; } h3 { font-size: 13px; }
   flex-direction: column; gap: 8px; max-height: 70vh; overflow: auto;
 }
 .pop:popover-open { display: flex; }
+@supports not (position-area: bottom) { .pop { inset: 0; margin: auto; } }
 .menu { padding: 4px; gap: 0; min-width: 180px; }
 .menu button { height: 30px; padding: 0 10px; border: 0; border-radius: 6px; background: none; text-align: left; font-size: 13px; }
 .menu button:hover, .menu button:focus-visible { background: var(--hover); }
+
+/* a closed-by-default section: its title on the left, its current value on the right */
+.disclosure { border-top: 1px solid var(--border); }
+.disclosure > summary {
+  display: flex; align-items: center; gap: 8px; padding: 10px 0; list-style: none; font-size: 13px; border-radius: 4px; cursor: pointer;
+}
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary::after {
+  content: ''; flex: none; width: 6px; height: 6px; margin: 0 4px; border: solid var(--text3); border-width: 0 1.5px 1.5px 0;
+  rotate: -45deg; transition: rotate 160ms ease;
+}
+.disclosure[open] > summary::after { rotate: 45deg; }
+.disclosure .val { flex: 1; min-width: 0; text-align: right; font-size: 12px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disclosure > .body { display: flex; flex-direction: column; gap: 8px; padding: 0 0 12px; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }

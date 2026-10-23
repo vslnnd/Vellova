@@ -100,6 +100,11 @@ describe('splitSummary', () => {
     ]);
   });
 
+  it('names the value column', () => {
+    expect(lines(rules({ column: 'Region' })).mode).toBe('By value (Region)');
+    expect(lines(rules({ mode: 'people', column: 'Region' })).mode).toBe('People');
+  });
+
   it('names every mode', () => {
     const modes = (['value', 'people', 'rows', 'parts', 'sheets'] as const).map((mode) => lines(rules({ mode })).mode);
     expect(modes).toEqual(['By value', 'People', 'Rows', 'Parts', 'Sheets']);
