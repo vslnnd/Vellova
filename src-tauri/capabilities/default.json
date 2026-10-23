@@ -14,7 +14,24 @@
     "dialog:default",
     "opener:default",
     "opener:allow-reveal-item-in-dir",
-    { "identifier": "opener:allow-open-path", "allow": [{ "path": "**" }] },
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "**" }],
+      "deny": [
+        { "path": "**/*.[eE][xX][eE]" },
+        { "path": "**/*.[bB][aA][tT]" },
+        { "path": "**/*.[cC][mM][dD]" },
+        { "path": "**/*.[cC][oO][mM]" },
+        { "path": "**/*.[mM][sS][iI]" },
+        { "path": "**/*.[pP][sS]1" },
+        { "path": "**/*.[vV][bB][sS]" },
+        { "path": "**/*.[lL][nN][kK]" },
+        { "path": "**/*.[sS][cC][rR]" },
+        { "path": "**/*.[jJ][sS]" },
+        { "path": "**/*.[hH][tT][aA]" },
+        { "path": "**/*.[rR][eE][gG]" }
+      ]
+    },
     "process:default",
     "updater:default"
   ]

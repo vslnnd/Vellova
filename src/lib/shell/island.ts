@@ -39,7 +39,8 @@ export type IslandEvent =
   | { type: 'attention'; count: number }
   | { type: 'updateReady'; version: string }
   | { type: 'restarting' }
-  | { type: 'restored'; text: string }
+  /** `keep`: a message about something else (a failed open), so the last batch stays undoable */
+  | { type: 'restored'; text: string; keep?: boolean }
   | { type: 'clearTransient' }
   | { type: 'reset' };
 
@@ -67,7 +68,7 @@ export function reduce(s: IslandState, e: IslandEvent): IslandState {
     case 'restarting':
       return { ...s, transient: { kind: 'restarting', text: 'Restarting…' } };
     case 'restored':
-      return { ...s, done: null, opened: null, open: null, transient: { kind: 'restored', text: e.text } };
+      return { ...s, ...(e.keep ? {} : { done: null, opened: null }), open: null, transient: { kind: 'restored', text: e.text } };
     case 'clearTransient':
       return { ...s, transient: null };
     case 'reset':

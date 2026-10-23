@@ -18,16 +18,16 @@
 
   // the pointer is over the island, or keyboard focus is in the Done layer: Done stays until both end
   let over = $state(false);
-  let focus = $state(false);
+  let focused = $state(false);
   // a focused button that the layer hid takes no blur with it
   $effect(() => {
-    if (active !== 'done') focus = false;
+    if (active !== 'done') focused = false;
   });
 
   // notices fold into their chip after a while; "restored" just goes away
   $effect(() => {
     const ms = TIMEOUT_MS[active];
-    if (!ms || (active === 'done' && (holdDone() || over || focus))) return;
+    if (!ms || (active === 'done' && (holdDone() || over || focused))) return;
     const t = setTimeout(() => send({ type: 'collapse' }), ms);
     return () => clearTimeout(t);
   });
@@ -39,7 +39,7 @@
       await openPath(path);
     } catch (e) {
       log({ level: 'warn', tool: 'app', file: path, message: `Couldn't open the ${what}.`, detail: String(e) });
-      send({ type: 'restored', text: "Couldn't open · see History › Log" });
+      send({ type: 'restored', text: "Couldn't open · see History › Log", keep: true });
     }
   }
 
@@ -117,14 +117,16 @@
     {#if island.activity?.cancellable}<button class="out quiet" onclick={oncancel}>Cancel</button>{/if}
   </div>
 
-  <div class="layer note" class:on={active === 'done'} bind:offsetWidth={w.done} onfocusin={(e) => (focus = (e.target as Element).matches(':focus-visible'))} onfocusout={() => (focus = false)}>
+  <div class="layer note" class:on={active === 'done'} bind:offsetWidth={w.done} onfocusin={(e) => (focused = (e.target as Element).matches(':focus-visible'))} onfocusout={() => (focused = false)}>
     <span class="icon">
       {#if active === 'done'}<svg class="check" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>{/if}
     </span>
     <span class="msg">{island.done}</span>
     <span class="acts">
-      <button class="out" onclick={() => void openIt('folder')}>Open folder</button>
-      {#if island.opened?.file}<button class="out" onclick={() => void openIt('file')}>Open file</button>{/if}
+      {#if island.opened}
+        <button class="out" onclick={() => void openIt('folder')}>Open folder</button>
+        {#if island.opened.file}<button class="out" onclick={() => void openIt('file')}>Open file</button>{/if}
+      {/if}
       <button class="act" data-tour="undo" onclick={onundo}>Undo</button>
     </span>
   </div>

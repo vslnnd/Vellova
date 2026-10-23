@@ -83,6 +83,19 @@ describe('island', () => {
     expect(reduce(s, { type: 'restored', text: '2 names restored' }).opened).toBeNull();
   });
 
+  it('restored with keep shows the message but leaves the batch undoable', () => {
+    const open = { folder: 'C:\\out', file: null };
+    const s = run(start, { type: 'finish', text: '2 files renamed', attention: 0, open });
+    const kept = reduce(s, { type: 'restored', text: "Couldn't open · see History › Log", keep: true });
+    expect(layer(kept)).toBe('restored');
+    expect(kept.done).toBe('2 files renamed');
+    expect(kept.opened).toEqual(open);
+    expect(chips(reduce(kept, { type: 'collapse' }))).toEqual(['done']);
+    const plain = reduce(s, { type: 'restored', text: '2 names restored' });
+    expect(plain.done).toBeNull();
+    expect(chips(reduce(plain, { type: 'collapse' }))).toEqual([]);
+  });
+
   it('openTarget: none, one file, several files, a drive root', () => {
     expect(openTarget([])).toBeNull();
     expect(openTarget(['C:\\out\\a.pdf'])).toEqual({ folder: 'C:\\out', file: 'C:\\out\\a.pdf' });
