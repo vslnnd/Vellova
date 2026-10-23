@@ -21,11 +21,11 @@
 
 <div class="profile" data-tour={tour}>
   <label class="label" for={id}>Profile</label>
-  <select {id} class="field" value={current ?? ''} onchange={(e) => onpick(e.currentTarget.value || null)}>
-    <option value="">No profile</option>
-    {#each profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
-  </select>
   <div class="row">
+    <select {id} class="field pick" value={current ?? ''} onchange={(e) => onpick(e.currentTarget.value || null)}>
+      <option value="">No profile</option>
+      {#each profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
+    </select>
     {#if current}<button class="btn small" onclick={() => onsave()}>Save</button>{/if}
     {#if naming}
       <input class="field grow" aria-label="New profile name" placeholder="Profile name" bind:value={newName} onkeydown={(e) => e.key === 'Enter' && saveNew()} />
@@ -37,6 +37,8 @@
 </div>
 
 <style>
-  .profile { display: flex; flex-direction: column; gap: 8px; }
-  .grow { flex: 1; min-width: 0; }
+  .profile { display: flex; flex-direction: column; gap: 4px; }
+  .row { flex-wrap: nowrap; }
+  .pick { width: 180px; }
+  .grow { width: 160px; }
 </style>

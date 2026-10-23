@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Grid } from '../src/lib/split/engine/grid';
 import type { FileInfo, Step } from '../src/lib/shared/types';
+import { listKey } from '../src/lib/rename/engine/steps';
 
 const m = vi.hoisted(() => ({ readFile: vi.fn(), listFiles: vi.fn(), listDir: vi.fn(), readPdfText: vi.fn(), readGrid: vi.fn() }));
 vi.mock('../src/lib/shared/ipc', async (orig) => ({
@@ -67,6 +68,11 @@ describe('rename session with steps', () => {
     const s = await load([listStep]);
     expect(s.plan.items.map((i) => i.reason)).toEqual(['not-in-list', 'not-in-list']);
     for (const i of s.plan.items) expect(i.detail).toMatch(/open in another program/);
+    expect(s.session.listErrors).toEqual({ [listKey(listStep)]: 'The list file is open in another program.' });
+    m.readFile.mockImplementation(async () => new Uint8Array([1]));
+    await s.refresh(); // Read again, once the list is closed
+    expect(s.session.listErrors).toEqual({});
+    expect(s.plan.items[0].name).toBe('Acme.pdf');
   });
 
   it('steps that need no PDF text never read the PDFs', async () => {

@@ -30,6 +30,10 @@ export const session = $state({
   profileId: null as string | null,
   /** the left column shows the settings instead of the loaded profile's summary; set by Edit or Change, ended by using a profile or Reset */
   editing: false,
+  /** the PDF the picker shows, while picking a value with a click */
+  picking: null as string | null,
+  /** per list step (listKey): why its list can't be used, from the last read */
+  listErrors: {} as Record<string, string>,
   /** per PDF: its new name or why there is none (missing: not read yet) */
   names: {} as Record<string, Named>,
   /** companions that could not be read */
@@ -65,9 +69,6 @@ function waitReason(steps: Step[]): string | null {
   }
   return null;
 }
-
-/** For the old screen until the step editor: the first value step's keyword is empty. */
-export const needsKeyword = () => waitReason(session.rules.steps) === KEYWORD;
 
 /** {n} and {date} of every PDF, so a PDF without a name (failed, or still reading) still expands its folder. */
 function slotsOf(files: FileInfo[], today: Date) {
@@ -167,6 +168,12 @@ const sheetError = (e: unknown) =>
 const gridCache = new Map<string, Grid>();
 const MISSING_LIST = 'The list file is missing.';
 
+/** Why a list file could not be read, from the read's error. */
+export function listReadError(e: unknown): string {
+  const r = ipcReason(e);
+  return r.reason === 'missing' ? MISSING_LIST : r.reason === 'locked' ? 'The list file is open in another program.' : r.detail;
+}
+
 /** The map of a list step; a failure becomes the reason shown on each PDF. */
 async function readList(s: Extract<Step, { type: 'list' }>): Promise<ListRead> {
   const f = (await ipc.listFiles([s.path], false)).find((x) => pathKey(x.path) === pathKey(s.path));
@@ -178,8 +185,7 @@ async function readList(s: Extract<Step, { type: 'list' }>): Promise<ListRead> {
     try {
       bytes = await ipc.readFile(f.path);
     } catch (e) {
-      const r = ipcReason(e);
-      return { ok: false, detail: r.reason === 'missing' ? MISSING_LIST : r.reason === 'locked' ? 'The list file is open in another program.' : r.detail };
+      return { ok: false, detail: listReadError(e) };
     }
     try {
       grid = await readGrid(key, extOf(f.path), bytes, null);
@@ -240,6 +246,7 @@ export async function refresh() {
       lists[listKey(s)] = await readList(s);
       if (stale()) return;
     }
+    session.listErrors = Object.fromEntries(Object.entries(lists).flatMap(([k, l]) => (l.ok ? [] : [[k, l.detail]])));
     const names: Record<string, Named> = {};
     const failures: Record<string, Failure> = {};
     const sheets: { path: string; data: CompanionData }[] = [];

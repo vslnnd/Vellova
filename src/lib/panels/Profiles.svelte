@@ -89,7 +89,6 @@
   <button aria-pressed={kind === 'rename'} onclick={() => ((kind = 'rename'), (editing = null))}>Rename</button>
   <button aria-pressed={kind === 'split'} onclick={() => ((kind = 'split'), (editing = null))}>Split</button>
 </div>
-<p class="hint">To create a profile, set up {kind === 'split' ? 'Split' : 'Rename'} and choose "Save as new profile".</p>
 
 {#each shown as p (p.id)}
   <div class="card">

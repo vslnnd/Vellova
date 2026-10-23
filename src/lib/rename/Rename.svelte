@@ -9,6 +9,7 @@
   import DropZone from './DropZone.svelte';
   import { summary } from './engine/planner';
   import Preview from './Preview.svelte';
+  import RenameBar from './RenameBar.svelte';
   import RenameSettings from './RenameSettings.svelte';
   import { addPaths, invalidate, plan, refresh, runBatch, session } from './session.svelte';
 
@@ -46,10 +47,8 @@
 </script>
 
 <section class="rename">
-  <header>
-    <h1>Rename</h1>
-    <p class="hint">Rules on the left, every new name previewed on the right.</p>
-  </header>
+  <header><h1>Rename</h1></header>
+  <RenameBar />
   <div class="cols">
     <RenameSettings />
     <div class="right">

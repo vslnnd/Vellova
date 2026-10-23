@@ -11,6 +11,8 @@ describe('stepLabel', () => {
   it('names a value step by its keyword and side', () => {
     expect(text({ type: 'pdfValue', keyword: 'Invoice No.:', position: 'after', occurrence: 1 })).toBe('Text after "Invoice No.:"');
     expect(text({ type: 'pdfValue', keyword: 'Total', position: 'below', occurrence: 2 })).toBe('Text below "Total"');
+    expect(text({ type: 'pdfValue', keyword: '', position: 'after', occurrence: 1 })).toBe('Text after a keyword');
+    expect(text({ type: 'pdfValue', keyword: '  ', position: 'below', occurrence: 1 })).toBe('Text below a keyword');
   });
 
   it('names each pattern preset', () => {
