@@ -8,6 +8,7 @@
   import { proposeLabel } from './engine/propose';
   import { matchNo } from './engine/profile';
   import { openPage, readPdfText, type Word } from './pdf';
+  import { stepView } from './RenameSettings.svelte';
   import { session } from './session.svelte';
 
   const POSITIONS: [Position, string][] = [['after', 'After'], ['before', 'Before'], ['below', 'Below'], ['above', 'Above']];
@@ -18,7 +19,8 @@
   let error = $state('');
   let page = $state(1);
   let pages = $state(0);
-  let scale = $state(1);
+  /** the page the drawn canvas and `words` belong to (lags `page` while the next one renders) */
+  let shownPage = $state(0);
   let words = $state<Word[]>([]);
   let width = $state(0);
   let canvas: HTMLCanvasElement;
@@ -29,7 +31,7 @@
   let position = $state<Position>('after');
   let occurrence = $state(1);
   let notFound = $state(false);
-  const gives = $derived(picked === null ? null : findValue(items, keyword, position, matchNo(occurrence)));
+  const gives = $derived(picked === null ? null : findValue(items, keyword.trim(), position, matchNo(occurrence)));
 
   // a new file: read it once (bytes for drawing, items for the proposal)
   $effect(() => {
@@ -39,6 +41,7 @@
     error = '';
     page = 1;
     picked = null;
+    [shownPage, words] = [0, []];
     let live = true;
     void (async () => {
       try {
@@ -66,7 +69,7 @@
         try {
           const r = await openPage(b.slice(), n, canvas, w);
           if (!live) return;
-          [pages, scale, words] = [r.pages, r.scale, r.words];
+          [pages, shownPage, words, error] = [r.pages, n, r.words, ''];
         } catch (e) {
           if (live) error = classifyPdfError(e).detail;
         }
@@ -80,10 +83,10 @@
 
   async function pick(k: number) {
     // word k of the page is the page's k-th item (openPage lists them as extractItems does)
-    const i = items.findIndex((it) => it.page === page) + k;
+    const i = items.findIndex((it) => it.page === shownPage) + k;
     if (items[i]?.str !== words[k].str) return;
     const p = proposeLabel(items, i);
-    picked = { page, k };
+    picked = { page: shownPage, k };
     keyword = p?.keyword ?? '';
     position = p?.position ?? 'after';
     occurrence = p?.occurrence ?? 1;
@@ -101,7 +104,15 @@
     if (at >= 0) steps[at] = step;
     else if (steps[0]?.type === 'pdfPattern' || steps[0]?.type === 'list') steps[0] = step;
     else steps.unshift(step);
+    stepView.open = 0;
+    void close();
+  }
+
+  /** Back to the preview, with focus on the bar button that opened the picker. */
+  async function close() {
     session.picking = null;
+    await tick();
+    document.querySelector<HTMLElement>('[data-part="pick"]')?.focus();
   }
 </script>
 
@@ -118,7 +129,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
       </button>
     {/if}
-    <button class="btn small" onclick={() => (session.picking = null)}>Cancel</button>
+    <button class="btn small" onclick={() => void close()}>Cancel</button>
   </div>
   <div class="scroll">
     {#if error}<p class="err" role="alert">{error}</p>{/if}
@@ -127,9 +138,9 @@
       {#each words as w, k (k)}
         <button
           class="word"
-          class:on={picked?.page === page && picked.k === k}
+          class:on={picked?.page === shownPage && picked.k === k}
           aria-label={w.str}
-          style="left:{w.x * scale}px; top:{(w.y - w.h) * scale}px; width:{w.w * scale}px; height:{w.h * scale}px"
+          style="left:{w.box.left}px; top:{w.box.top}px; width:{w.box.width}px; height:{w.box.height}px"
           onclick={() => void pick(k)}
         ></button>
       {/each}

@@ -61,7 +61,7 @@
     <span class="label" id="rn-from">Name from</span>
     <div class="seg" role="group" aria-labelledby="rn-from">
       <button aria-pressed={!session.picking && rules.steps[0]?.type !== 'list'} onclick={() => void nameFrom('pdf')}>Text in the PDF</button>
-      <button aria-pressed={!!session.picking} disabled={!firstPdf} title={firstPdf ? undefined : 'Add a PDF first'} onclick={() => (session.picking ??= firstPdf!)}>Click on the PDF</button>
+      <button data-part="pick" aria-pressed={!!session.picking} disabled={!firstPdf} title={firstPdf ? undefined : 'Add a PDF first'} onclick={() => (session.picking ??= firstPdf!)}>Click on the PDF</button>
       <button aria-pressed={!session.picking && rules.steps[0]?.type === 'list'} onclick={() => void nameFrom('list')}>A list</button>
     </div>
   </div>

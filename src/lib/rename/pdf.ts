@@ -35,7 +35,8 @@ export function readPdfText(bytes: Uint8Array): Promise<PdfText> {
   });
 }
 
-export type Word = Item & { w: number; h: number };
+/** A word in PDF units (as the engine reads it), plus `box`: where it is drawn, in CSS pixels on the canvas. */
+export type Word = Item & { w: number; h: number; box: { left: number; top: number; width: number; height: number } };
 
 /**
  * Draws page `page` on `canvas`, `width` CSS pixels wide, and lists its words in PDF units, built and ordered like
@@ -52,13 +53,18 @@ export function openPage(bytes: Uint8Array, page: number, canvas: HTMLCanvasElem
     canvas.height = Math.round(vp.height);
     canvas.style.width = `${width}px`;
     canvas.style.height = `${base.height * scale}px`;
+    const css = pg.getViewport({ scale }); // follows rotation and a MediaBox/CropBox that doesn't start at 0,0
     await pg.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
     const words: Word[] = [];
     for (const raw of (await pg.getTextContent()).items as { str?: string; transform: number[]; width: number }[]) {
       const str = (raw.str ?? '').trim();
       if (!str) continue;
       const t = raw.transform;
-      words.push({ str, x: t[4], y: base.height - t[5], page, w: raw.width, h: Math.hypot(t[2], t[3]) });
+      const [w, h] = [raw.width, Math.hypot(t[2], t[3])];
+      const [x1, y1] = css.convertToViewportPoint(t[4], t[5]);
+      const [x2, y2] = css.convertToViewportPoint(t[4] + w, t[5] + h);
+      const box = { left: Math.min(x1, x2), top: Math.min(y1, y2), width: Math.abs(x2 - x1), height: Math.abs(y2 - y1) };
+      words.push({ str, x: t[4], y: base.height - t[5], page, w, h, box });
     }
     return { pages: doc.numPages, scale, words };
   });

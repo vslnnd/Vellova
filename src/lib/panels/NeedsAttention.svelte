@@ -71,7 +71,7 @@
           <div class="row">
             {#if TYPE.includes(reason)}
               <input class="field mono grow" placeholder="Type a name" aria-label="New name for {name(it.source)}" onchange={(e) => rename.setName(it.source, e.currentTarget.value, true)} />
-              {#if !isSplit && PICK.includes(reason)}<button class="btn small" onclick={() => pickOnPdf(it.source)}>Click value on PDF</button>{/if}
+              {#if !isSplit && PICK.includes(reason) && extOf(it.source) === PDF}<button class="btn small" onclick={() => pickOnPdf(it.source)}>Click value on PDF</button>{/if}
             {:else if reason === 'no-match'}
               <select class="field grow" aria-label="PDF for {name(it.source)}" onchange={(e) => e.currentTarget.value && rename.pickPdf(it.source, e.currentTarget.value)}>
                 <option value="">Pick its PDF…</option>

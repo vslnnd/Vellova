@@ -199,6 +199,19 @@ describe('rename Reset and edited', () => {
     expect(s.session.editing).toBe(true);
   });
 
+  it('the picker closes when its file leaves the list, not when another one does', async () => {
+    const s = await load([listStep]);
+    s.session.picking = A;
+    s.removeFile(B);
+    expect(s.session.picking).toBe(A);
+    s.removeFile(A);
+    expect(s.session.picking).toBeNull();
+    await s.addPaths([A, B]);
+    s.session.picking = B;
+    s.clearFiles();
+    expect(s.session.picking).toBeNull();
+  });
+
   it('using a profile ends editing', async () => {
     const s = await use();
     s.session.editing = true;
