@@ -21,6 +21,8 @@ export const session = $state({
   files: [] as FileInfo[],
   rules: structuredClone(DEFAULT_SPLIT_RULES) as SplitRules,
   profileId: null as string | null,
+  /** the left column shows the settings instead of the loaded profile's summary; set by Edit or Change, ended by using a profile or Reset */
+  editing: false,
   reads: {} as Record<string, FileRead>,
   /** per file: the column to split by when its header differs (Needs attention) */
   columnFor: {} as Record<string, string>,
@@ -509,6 +511,35 @@ export async function whenIdle(capMs = 30_000) {
 export function useProfile(p: SplitProfile) {
   session.rules = splitRules($state.snapshot(p.rules));
   session.profileId = p.id;
+  session.editing = false;
+}
+
+/** Rules back to the loaded profile (else the defaults) and an empty file list. Not while a batch runs. */
+export function reset() {
+  if (session.busy) return;
+  const p = profile();
+  session.rules = p ? splitRules($state.snapshot(p.rules)) : structuredClone(DEFAULT_SPLIT_RULES);
+  session.editing = false;
+  clearFiles();
+}
+
+/** A profile is loaded and the rules differ from it (as the session would load it). */
+const changed = $derived.by(() => {
+  const p = profile();
+  return !!p && JSON.stringify($state.snapshot(session.rules)) !== JSON.stringify(splitRules($state.snapshot(p.rules)));
+});
+export const edited = {
+  get value() {
+    return changed;
+  },
+};
+
+/** Chooses the profile's archive folder. */
+export async function chooseArchiveFolder(p: SplitProfile) {
+  const folder = await open({ directory: true, defaultPath: p.archiveFolder || undefined });
+  if (!folder) return;
+  p.archiveFolder = folder;
+  save('profiles');
 }
 
 /** Saves the rules into the current profile, or as a new profile when `name` is given. */

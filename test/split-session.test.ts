@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Grid } from '../src/lib/split/engine/grid';
+import { DEFAULT_SPLIT_RULES } from '../src/lib/split/engine/profile';
 import type { Batch, FileInfo, Op, SplitProfile } from '../src/lib/shared/types';
 
 const m = vi.hoisted(() => ({
   readFile: vi.fn(), listFiles: vi.fn(), listDir: vi.fn(), applyPlan: vi.fn(), stageWrite: vi.fn(),
-  stageClear: vi.fn(), foldersExist: vi.fn(), cancelApply: vi.fn(), readGrid: vi.fn(), writeFile: vi.fn(),
+  stageClear: vi.fn(), foldersExist: vi.fn(), cancelApply: vi.fn(), readGrid: vi.fn(), writeFile: vi.fn(), open: vi.fn(),
 }));
 vi.mock('../src/lib/shared/ipc', async (orig) => ({
   ...(await orig<typeof import('../src/lib/shared/ipc')>()),
@@ -24,7 +25,7 @@ vi.mock('../src/lib/split/sheets', () => ({
   readGrid: (k: string, e: string, b: Uint8Array, s: string | null) => m.readGrid(k, e, b, s),
   writeFile: (k: string, e: string, b: Uint8Array, r: unknown) => m.writeFile(k, e, b, r),
 }));
-vi.mock('@tauri-apps/plugin-dialog', () => ({ open: async () => null }));
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: (o: unknown) => m.open(o) }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 
 const A = 'C:\\in\\A.xlsx';
@@ -37,7 +38,6 @@ const ok = (ops: Op[]) => ops.map((_, i) => ({ i, ok: true }));
 async function load(files = [A], profile?: Partial<SplitProfile>) {
   const s = await import('../src/lib/split/session.svelte');
   const st = await import('../src/lib/shared/state.svelte');
-  const { DEFAULT_SPLIT_RULES } = await import('../src/lib/split/engine/profile');
   m.listFiles.mockImplementation(async (p: string[]) => p.filter((x) => x !== 'gone').map(info));
   await s.addPaths(files);
   s.session.rules = { ...DEFAULT_SPLIT_RULES, column: 'Dept', params: ['X', 'Y'].map((value) => ({ value, label: '', payable: true })) };
@@ -62,6 +62,7 @@ beforeEach(() => {
   m.stageWrite.mockImplementation(async (_b: string, n: number) => `C:\\stage\\${n}`);
   m.stageClear.mockResolvedValue(undefined);
   m.foldersExist.mockResolvedValue([true]);
+  m.open.mockResolvedValue(null);
   m.applyPlan.mockImplementation(async (_b: string, ops: Op[]) => ok(ops));
 });
 
@@ -294,12 +295,95 @@ describe('split session', () => {
 
   it('re-runs with the files that still exist, falling back to the source folder', async () => {
     const s = await load();
-    const { DEFAULT_SPLIT_RULES } = await import('../src/lib/split/engine/profile');
     m.foldersExist.mockResolvedValue([false]);
     const b = { rerun: { files: [B, 'gone', 5], rules: { ...DEFAULT_SPLIT_RULES, mode: 'rows', folder: { mode: 'folder', path: 'C:\\old' } }, profileId: null } } as unknown as Batch;
     await s.rerun(b);
     expect(s.session.files.map((f) => f.path)).toEqual([B]);
     expect(s.session.rules).toMatchObject({ mode: 'rows', folder: { mode: 'source' } });
     expect(s.data.log.filter((l) => l.level === 'warn').map((l) => l.file ?? l.message)).toEqual(['gone', expect.stringContaining('C:\\old')]);
+  });
+});
+
+describe('split Reset and edited', () => {
+  const rulesOf = (over = {}) => ({ ...structuredClone(DEFAULT_SPLIT_RULES), column: 'Dept', mode: 'rows' as const, rows: 5, ...over });
+  const profile = (): SplitProfile => ({ id: 'p1', name: 'Q3', desc: '', rules: rulesOf(), archiveFolder: ARCH });
+  const use = async () => {
+    const s = await import('../src/lib/split/session.svelte');
+    const st = await import('../src/lib/shared/state.svelte');
+    m.listFiles.mockImplementation(async (p: string[]) => p.map(info));
+    st.data.profiles.split = [profile()];
+    s.useProfile(st.data.profiles.split[0]);
+    return { ...s, data: st.data };
+  };
+
+  it('is edited once a rule differs from the loaded profile, and not before', async () => {
+    const s = await import('../src/lib/split/session.svelte');
+    expect(s.edited.value).toBe(false); // no profile loaded
+    const loaded = await use();
+    expect(loaded.edited.value).toBe(false);
+    loaded.session.rules.rows = 6;
+    expect(loaded.edited.value).toBe(true);
+    loaded.session.rules.rows = 5;
+    expect(loaded.edited.value).toBe(false);
+  });
+
+  it('compares with the profile as it loads, defaults filled in', async () => {
+    const s = await import('../src/lib/split/session.svelte');
+    const st = await import('../src/lib/shared/state.svelte');
+    st.data.profiles.split = [{ id: 'old', name: 'Old', desc: '', rules: { mode: 'parts', parts: 3 } as never, archiveFolder: null }];
+    s.useProfile(st.data.profiles.split[0]);
+    expect(s.edited.value).toBe(false);
+  });
+
+  it('Reset restores the loaded profile, empties the file list and ends editing', async () => {
+    const s = await use();
+    await s.addPaths([A, B]);
+    s.session.rules.rows = 99;
+    s.session.rules.subfolder = true;
+    s.session.editing = true;
+    s.reset();
+    expect(s.session.rules).toEqual(rulesOf());
+    expect(s.session.files).toEqual([]);
+    expect(s.session.editing).toBe(false);
+    expect(s.session.profileId).toBe('p1');
+    expect(s.edited.value).toBe(false);
+  });
+
+  it('Reset without a profile goes back to the defaults', async () => {
+    const s = await load([A]);
+    expect(s.session.rules.column).toBe('Dept');
+    s.reset();
+    expect(s.session.rules).toEqual(DEFAULT_SPLIT_RULES);
+    expect(s.session.rules).not.toBe(DEFAULT_SPLIT_RULES);
+    expect(s.session.files).toEqual([]);
+  });
+
+  it('Reset does nothing while a batch runs', async () => {
+    const s = await load([A]);
+    s.session.busy = true;
+    s.session.editing = true;
+    s.reset();
+    expect(s.session.files).toHaveLength(1);
+    expect(s.session.rules.column).toBe('Dept');
+    expect(s.session.editing).toBe(true);
+  });
+
+  it('using a profile ends editing', async () => {
+    const s = await use();
+    s.session.editing = true;
+    s.useProfile(s.data.profiles.split[0]);
+    expect(s.session.editing).toBe(false);
+  });
+
+  it('chooseArchiveFolder keeps the chosen folder in the profile, or nothing when the dialog is cancelled', async () => {
+    const s = await use();
+    const p = s.data.profiles.split[0];
+    m.open.mockResolvedValueOnce('D:\\new');
+    await s.chooseArchiveFolder(p);
+    expect(m.open).toHaveBeenLastCalledWith({ directory: true, defaultPath: ARCH });
+    expect(p.archiveFolder).toBe('D:\\new');
+    m.open.mockResolvedValueOnce(null);
+    await s.chooseArchiveFolder(p);
+    expect(p.archiveFolder).toBe('D:\\new');
   });
 });

@@ -130,3 +130,76 @@ describe('rename session with steps', () => {
     expect(s.session.profileId).toBe('p');
   });
 });
+
+describe('rename Reset and edited', () => {
+  const stored = { id: 'p', name: 'P', desc: '', steps: [listStep], pair: false, destination: { mode: 'move' as const, folder: 'D:\\out' }, conflict: 'skip' as const };
+  /** Svelte wraps stored profiles in a proxy in the app, which structuredClone rejects (tests run the server build, which doesn't). */
+  const use = async () => {
+    const s = await import('../src/lib/rename/session.svelte');
+    const { data } = await import('../src/lib/shared/state.svelte');
+    m.listFiles.mockImplementation(async (p: string[]) => p.map(info));
+    data.profiles.rename.push(structuredClone(stored));
+    const p = data.profiles.rename[0];
+    s.useProfile({ ...p, steps: new Proxy(p.steps, {}) });
+    return s;
+  };
+
+  it('is edited once a rule differs from the loaded profile, and not before', async () => {
+    const s = await import('../src/lib/rename/session.svelte');
+    expect(s.edited.value).toBe(false); // no profile loaded
+    const loaded = await use();
+    expect(loaded.edited.value).toBe(false);
+    loaded.session.rules.conflict = 'add';
+    expect(loaded.edited.value).toBe(true);
+    loaded.session.rules.conflict = 'skip';
+    expect(loaded.edited.value).toBe(false);
+    loaded.session.rules.steps.push({ type: 'trim' });
+    expect(loaded.edited.value).toBe(true);
+  });
+
+  it('Reset restores the loaded profile, empties the file list and ends editing', async () => {
+    const s = await use();
+    await s.addPaths([A, B]);
+    s.session.rules.pair = true;
+    s.session.rules.steps = [];
+    s.session.editing = true;
+    s.reset();
+    expect(s.session.rules).toEqual({ steps: [listStep], pair: false, destination: { mode: 'move', folder: 'D:\\out' }, conflict: 'skip' });
+    expect(s.session.files).toEqual([]);
+    expect(s.session.editing).toBe(false);
+    expect(s.session.profileId).toBe('p');
+    expect(s.edited.value).toBe(false);
+  });
+
+  it('Reset without a profile goes back to the defaults', async () => {
+    const s = await import('../src/lib/rename/session.svelte');
+    const { DEFAULT_RULES } = await import('../src/lib/rename/engine/profile');
+    m.listFiles.mockImplementation(async (p: string[]) => p.map(info));
+    await s.addPaths([A]);
+    s.session.rules.conflict = 'replace';
+    s.reset();
+    expect(s.session.rules).toEqual(DEFAULT_RULES);
+    expect(s.session.rules).not.toBe(DEFAULT_RULES);
+    expect(s.session.files).toEqual([]);
+  });
+
+  it('Reset does nothing while a batch runs', async () => {
+    const s = await load([listStep]);
+    s.session.busy = true;
+    s.session.editing = true;
+    s.reset();
+    expect(s.session.files).toHaveLength(2);
+    expect(s.session.rules.steps).toEqual([listStep]);
+    expect(s.session.editing).toBe(true);
+  });
+
+  it('using a profile ends editing', async () => {
+    const s = await use();
+    s.session.editing = true;
+    const { data } = await import('../src/lib/shared/state.svelte');
+    const p = data.profiles.rename[0];
+    s.useProfile({ ...p, steps: new Proxy(p.steps, {}) });
+    expect(s.session.editing).toBe(false);
+  });
+});
+

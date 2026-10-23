@@ -68,6 +68,9 @@ export type SplitRules = {
 };
 export type SplitProfile = { id: string; name: string; desc: string; rules: SplitRules; archiveFolder: string | null };
 
+/** A profile's settings as one line each, for the summary card: `key` names the setting a Change link goes to. */
+export type Summary = { lines: { key: string; label: string; text: string }[] };
+
 /** `pending`: recorded before the batch ran and no result came back yet (the app stopped mid-batch). */
 export type BatchItem = { from: string; to: string; ok: boolean; reason?: Reason; pending?: boolean; archived?: true };
 

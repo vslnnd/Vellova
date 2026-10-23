@@ -28,6 +28,8 @@ export const session = $state({
   files: [] as FileInfo[],
   rules: structuredClone(DEFAULT_RULES) as RenameRules,
   profileId: null as string | null,
+  /** the left column shows the settings instead of the loaded profile's summary; set by Edit or Change, ended by using a profile or Reset */
+  editing: false,
   /** per PDF: its new name or why there is none (missing: not read yet) */
   names: {} as Record<string, Named>,
   /** companions that could not be read */
@@ -470,7 +472,30 @@ export async function whenIdle(capMs = 30_000) {
 export function useProfile(p: RenameProfile) {
   session.rules = rulesFromProfile($state.snapshot(p)); // a stored profile is a $state proxy, which structuredClone rejects
   session.profileId = p.id;
+  session.editing = false;
 }
+
+const loaded = () => data.profiles.rename.find((p) => p.id === session.profileId);
+
+/** Rules back to the loaded profile (else the defaults) and an empty file list. Not while a batch runs. */
+export function reset() {
+  if (session.busy) return;
+  const p = loaded();
+  session.rules = p ? rulesFromProfile($state.snapshot(p)) : structuredClone(DEFAULT_RULES);
+  session.editing = false;
+  clearFiles();
+}
+
+/** A profile is loaded and the rules differ from it (as the session would load it). */
+const changed = $derived.by(() => {
+  const p = loaded();
+  return !!p && JSON.stringify($state.snapshot(session.rules)) !== JSON.stringify(rulesFromProfile($state.snapshot(p)));
+});
+export const edited = {
+  get value() {
+    return changed;
+  },
+};
 
 /** Saves the rules into the current profile, or as a new profile when `name` is given. */
 export function saveProfile(name?: string) {

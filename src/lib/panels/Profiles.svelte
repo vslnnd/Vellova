@@ -3,29 +3,23 @@
   import { ui } from '../app.svelte';
   import { freshProfiles, importProfiles } from '../migrate/nomina';
   import { pathKey } from '../rename/engine/files';
+  import { renameSummary } from '../rename/engine/summary';
   import { useProfile } from '../rename/session.svelte';
   import { ipc } from '../shared/ipc';
   import { data, save } from '../shared/state.svelte';
   import type { RenameProfile, SplitProfile } from '../shared/types';
-  import { useProfile as useSplit } from '../split/session.svelte';
+  import { splitSummary } from '../split/engine/summary';
+  import { chooseArchiveFolder, useProfile as useSplit } from '../split/session.svelte';
 
   type Any = RenameProfile | SplitProfile;
-  const MODE = { value: 'By value', people: 'People', rows: 'Rows', parts: 'Parts', sheets: 'Sheets' };
   let kind = $state<'rename' | 'split'>(ui.tool);
   const shown = $derived<Any[]>(data.profiles[kind]);
   let editing = $state<string | null>(null);
   let message = $state('');
   const clean = (e: unknown) => String(e).replace(/^[a-z]+: /, '');
 
-  function describe(p: RenameProfile) {
-    const [s] = p.steps;
-    const steps = s?.type === 'pdfValue' ? `${s.keyword || 'no keyword'} · ${s.position}` : `${p.steps.length} steps`;
-    return `${steps}${p.destination.mode === 'inplace' ? '' : ` · ${p.destination.mode} to folder`}`;
-  }
-  function describeSplit(p: SplitProfile) {
-    const r = p.rules;
-    return r.mode === 'value' ? `${MODE.value} · ${r.column || 'no column'}` : MODE[r.mode];
-  }
+  /** The profile's settings on one line. */
+  const describe = (p: Any) => (kind === 'split' ? splitSummary((p as SplitProfile).rules, (p as SplitProfile).archiveFolder) : renameSummary(p as RenameProfile)).lines.map((l) => l.text).join(' · ');
   function use(p: Any) {
     if (kind === 'split') useSplit(p as SplitProfile);
     else useProfile(p as RenameProfile);
@@ -35,12 +29,6 @@
   /** Another split profile that archives into the same folder. */
   const sharedWith = (p: SplitProfile) =>
     p.archiveFolder ? data.profiles.split.find((x) => x.id !== p.id && x.archiveFolder && pathKey(x.archiveFolder) === pathKey(p.archiveFolder!))?.name : undefined;
-  async function chooseArchive(p: SplitProfile) {
-    const folder = await open({ directory: true, defaultPath: p.archiveFolder || undefined });
-    if (!folder) return;
-    p.archiveFolder = folder;
-    save('profiles');
-  }
   function rename(p: Any, name: string) {
     if (editing !== p.id) return;
     editing = null;
@@ -123,13 +111,13 @@
     {:else}
       <h3>{p.name}</h3>
     {/if}
-    <p class="hint mono">{kind === 'split' ? describeSplit(p as SplitProfile) : describe(p as RenameProfile)}</p>
+    <p class="hint mono">{describe(p)}</p>
     {#if p.desc}<p class="hint">{p.desc}</p>{/if}
     {#if kind === 'split'}
       {@const sp = p as SplitProfile}
       <div class="row">
         <span class="hint">Archive folder: <span class="mono">{sp.archiveFolder || 'none'}</span></span>
-        <button class="btn small" onclick={() => void chooseArchive(sp)}>Choose…</button>
+        <button class="btn small" onclick={() => void chooseArchiveFolder(sp)}>Choose…</button>
         <button class="btn small" disabled={!sp.archiveFolder} onclick={() => ((sp.archiveFolder = null), save('profiles'))}>Clear</button>
       </div>
       {#if sharedWith(sp)}<p class="hint">Also used by "{sharedWith(sp)}".</p>{/if}
