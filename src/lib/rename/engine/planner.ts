@@ -25,6 +25,9 @@ export type PlanInput = {
   slots?: Record<string, { n: string; date: string }>;
 };
 
+/** A drive path (C:\ or C:/) or a network path (\\server). */
+const FULL_PATH = /^(?:[a-z]:[\\/]|\\\\)/i;
+
 const item = (source: string, status: Status, extra: Partial<PlanItem> = {}): PlanItem => ({ id: source, source, op: null, status, ...extra });
 
 /** The preview: one item per file, in list order. */
@@ -49,7 +52,8 @@ function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
   const place = (source: string, base: string, status: Status, dir: string): PlanItem => {
     const ext = extOf(source);
     if (!base) return item(source, 'attention', { reason: 'no-value', detail: 'The new name would be empty.' });
-    if (dest.mode !== 'inplace' && !dest.folder) return item(source, 'pending', { name: base + ext, detail: `Choose a folder to ${dest.mode} into.` });
+    // a relative folder would land beside the program, where Undo after a restart can't find it
+    if (dest.mode !== 'inplace' && !FULL_PATH.test(dest.folder)) return item(source, 'pending', { name: base + ext, detail: dest.folder ? 'Use a full folder path.' : `Choose a folder to ${dest.mode} into.` });
     let dup = false;
     for (let k = 0; ; k++) {
       const name = `${k ? `${base} (${k})` : base}${ext}`;

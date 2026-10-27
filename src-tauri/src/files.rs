@@ -199,9 +199,19 @@ fn journal(app: &AppHandle, batch: &str, suffix: &str) -> Result<PathBuf, String
     Ok(data_dir(app)?.join("journal").join(format!("{batch}{suffix}")))
 }
 
+/// Refuses a plan with a relative path before any operation runs: it would land beside the program, where Undo
+/// after a restart can't find it.
+fn check_absolute(ops: &[Op]) -> Result<(), String> {
+    match ops.iter().flat_map(|o| [&o.from, &o.to]).find(|p| !Path::new(p).is_absolute()) {
+        Some(p) => Err(format!("internal: {p} is not a full path.")),
+        None => Ok(()),
+    }
+}
+
 #[tauri::command]
 pub async fn apply_plan(app: AppHandle, batch: String, ops: Vec<Op>) -> Result<Vec<OpResult>, String> {
     let path = journal(&app, &batch, ".jsonl")?;
+    check_absolute(&ops)?;
     let _busy = Busy::take()?;
     CANCEL.store(false, Ordering::SeqCst);
     let progress = |done: usize, total: usize| {
@@ -332,6 +342,19 @@ mod tests {
         assert!(Busy::take().unwrap_err().starts_with("internal:"));
         drop(first);
         assert!(Busy::take().is_ok());
+    }
+
+    #[test]
+    fn a_plan_with_a_relative_path_is_refused_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let full = |n: &str| dir.path().join(n).to_string_lossy().into_owned();
+        let op = |from: String, to: String| Op { kind: ops::Kind::Copy, from, to, replace: false };
+        assert!(check_absolute(&[op(full("a.pdf"), full("b.pdf"))]).is_ok());
+        for (from, to) in [(full("a.pdf"), "out/b.pdf".to_string()), ("a.pdf".to_string(), full("b.pdf")), (full("a.pdf"), "b.pdf".to_string())] {
+            let e = check_absolute(&[op(full("x.pdf"), full("y.pdf")), op(from, to)]).unwrap_err();
+            assert!(e.starts_with("internal:"), "{e}");
+        }
+        assert!(check_absolute(&[]).is_ok());
     }
 
     #[test]

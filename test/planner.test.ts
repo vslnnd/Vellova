@@ -202,6 +202,19 @@ describe('planRename', () => {
       expect(plan({ files: [A], names, destination: { mode: 'copy', folder: '' } })[0].detail).toBe('Choose a folder to copy into.');
     });
 
+    it('a folder that is not a full path waits, so nothing lands relative to the program', () => {
+      const names = { [A]: named('DN') };
+      const X = 'C:\\in\\x.xlsx';
+      for (const folder of ['out', '..\\out', 'C:out', '\\out', '/out', '{value}\\out', ' ']) {
+        expect(plan({ files: [A], names, destination: { mode: 'move', folder } })[0], folder).toMatchObject({ status: 'pending', op: null, detail: 'Use a full folder path.' });
+      }
+      const rel = plan({ files: [A, X], names, pairs: { [X]: A }, destination: { mode: 'copy', folder: 'out' } });
+      expect(rel.map((i) => [i.status, i.op, i.detail])).toEqual([['pending', null, 'Use a full folder path.'], ['pending', null, 'Use a full folder path.']]);
+      for (const folder of ['C:\\out', 'c:/out', 'D:\\out\\{value}', '\\\\server\\share\\out']) {
+        expect(plan({ files: [A], names, destination: { mode: 'move', folder } })[0].op, folder).not.toBeNull();
+      }
+    });
+
     it('a file already in its target folder with its name is unchanged', () => {
       const P = 'C:\\out\\x\\DN.pdf';
       const same = plan({ files: [P], names: { [P]: named('DN', 'x') }, existing: new Set(['c:\\out\\x\\dn.pdf']), destination: { mode: 'move', folder: 'C:\\out\\{value}' } });
