@@ -26,10 +26,11 @@ The usual flow is to drop files, choose or tweak the rules, check the preview, a
 
 ## Capabilities and Constraints
 
-- Rename: value from a PDF found by keyword and position, add text, pair matching files, and rename in place or copy to a folder. Milestone 3 adds clicking a value on the PDF, patterns from the PDF, renaming from a list, modifier steps, sorting into folders, report export and an Explorer right-click.
+- Rename: an ordered list of steps. A name comes from a value in the PDF (found by keyword and position, or by clicking on the PDF), from a pattern or the document info in the PDF, or from a list in a spreadsheet. Modifier steps then replace, add or remove text, trim spaces, change case, number and date. Matching files follow their PDF. Files are renamed in place, or copied or moved into a folder that can be sorted by value, number or date. A batch report exports to .xlsx or .csv, and Explorer's right-click sends files or folders to either tool. All of this is Milestone 3, done in version 0.3.0.
 - Split: five modes; header row Default or Manual; output name template; folder with favourites; subfolders; format; collisions; summaries; archive originals; profiles; re-run.
 - Every feature that exists today must be kept.
-- Known open problem (user, 2026-10-22): the left settings columns of both tools show too many options at once, have an unclear order, make the effect of a setting hard to see, and need long scrolling.
+- Layout (Milestone 3): each tool has a command bar for the choices that shape the run, above a left column that shows only what the current choice needs. A loaded, unedited profile shows as a summary with Change links, Reset returns to the profile, and the Done island offers Open folder and Open file.
+- Resolved in Milestone 3 (reported by the user, 2026-10-22): the left settings columns of both tools showed too many options at once, in an unclear order, with long scrolling.
 
 ## Brand Commitments
 

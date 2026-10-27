@@ -94,9 +94,8 @@ Both engines are pure functions that produce a **Plan**: a list of operations. I
 
 ```ts
 type Op =
-  | { kind: 'rename'; from: string; to: string }
-  | { kind: 'copy'; from: string; to: string }
-  | { kind: 'move'; from: string; to: string };
+  | { kind: 'rename'; from: string; to: string; replace?: boolean } // a move is a rename whose target is in another folder
+  | { kind: 'copy'; from: string; to: string; replace?: boolean };
 type PlanItem = { id: string; source: string; op: Op | null; status: 'ready' | 'paired' | 'duplicate' | 'unchanged' | 'attention'; reason?: AttentionReason };
 ```
 
@@ -106,7 +105,7 @@ type PlanItem = { id: string; source: string; op: Op | null; status: 'ready' | '
 
 ### Rust commands
 
-- **`apply_plan(batchId, ops)`** executes the operations in order and appends a journal entry after each one. Each entry holds the operation, the result, and the final file's size and modified time. Swap and cycle renames (a→b, b→a) go through temporary names. A case-only rename (`a.pdf` → `A.pdf`) goes through a temporary name. Each operation returns its own result, so one failure doesn't stop the rest. Missing folders are created for `move` and `copy`. Split outputs are staged by `stage_write` (Vellova's own staging files) and placed by journaled `copy` ops. Archiving is a `rename` op whose name the planner picks.
+- **`apply_plan(batchId, ops)`** executes the operations in order and appends a journal entry after each one. Each entry holds the operation, the result, and the final file's size and modified time. Swap and cycle renames (a→b, b→a) go through temporary names. A case-only rename (`a.pdf` → `A.pdf`) goes through a temporary name. Each operation returns its own result, so one failure doesn't stop the rest. Missing folders are created for copies and for moves. A move across volumes copies the file, then removes the source. Split outputs are staged by `stage_write` (Vellova's own staging files) and placed by journaled `copy` ops. Archiving is a `rename` op whose name the planner picks.
 - **`undo_batch(batchId)`** walks the journal backwards:
   - renames and moves are reversed;
   - copied and written files go to the Recycle Bin;
@@ -173,12 +172,16 @@ States and timing:
 |---|---|---|
 | Idle | as above | - |
 | Reading | "Reading N PDFs…" with an indeterminate sweep, plus Cancel | Shown while totals are unknown |
-| Working | "Renaming k of N" / "Splitting k of N" with a determinate bar, a moving sheen, and Cancel | - |
-| Done | A check that draws itself, plus a single green ring pulse; "N files renamed" plus Undo | After **4 s** the island springs back to idle and an **undo chip slides in** from the left |
+| Working | "Renaming k of N" (or "Copying", "Moving") / "Splitting k of N" with a determinate bar, a moving sheen, and Cancel | - |
+| Done | A check that draws itself, plus a single green ring pulse; "N files renamed" (or copied, moved, created) plus Open folder, Open file and Undo | After **4 s** the island springs back to idle and an **undo chip slides in** from the left |
 | Attention | Warning icon; "N files need attention" plus Review | Shakes **once** (2–3 px, ~460 ms), then a warm glow pulses **3 times** and stops. After 6 s it collapses to an amber chip |
 | Update ready | The download arrow drops in, then **nudges continuously**; "Update ready" plus Restart | After **3.5 s** it collapses to a download chip that nudges 3 times, then rests |
 | Restarting / Restored | Spinner "Restarting…" / "N names restored" | Transient |
 
+- **Open folder and Open file** (Done state):
+  - Open folder opens the folder of the batch's first output file in Explorer. Open file opens that file itself and is offered only when the batch made exactly one file. Archived originals are never the target, and a batch that made nothing shows neither button.
+  - The Done state stays while the pointer is over the island or keyboard focus is inside it; the 4 s count starts when both end.
+  - If Windows refuses to open the target, the island shows "Couldn't open" and points to History › Log, the failure is logged as a warning, and the Undo chip stays.
 - **Chips** (undo, attention, update) are 36 px circles. Hover or keyboard focus expands a chip to show its label and action, and it collapses on leave. Chips are ordered attention, undo, update.
 - **Priority** when several states compete: working > attention > done > update.
 - **Motion:**
@@ -209,14 +212,40 @@ States and timing:
 
 ### Screens and panels
 
-- **Rename and Split** share one layout:
-  - left: settings (steps or mode);
-  - right: the live preview;
-  - bottom bar: a count ("6 files will be renamed · 1 needs attention"), Undo last batch, and the main button.
+- **Rename and Split** share one layout, top to bottom (which is also the keyboard order):
+  - the tool's title;
+  - the **command bar**: a card with the choices that shape the whole run, each a labelled control. It wraps onto more lines in a narrow window, so no control is ever hidden. A choice with several parts opens from the bar as a native popover, never a modal;
+  - two columns: the **left column**, which shows only what the current choice needs, and the live preview;
+  - the footer: a count ("6 files will be renamed · 1 needs attention"; "copied" or "moved" for those destinations), Undo last batch, and the main button.
+- **Command bar, Rename:**
+  - *Profile:* a select with Save and Save as new profile.
+  - *Name from:* Text in the PDF | Click on the PDF | A list. Text in the PDF makes step 1 a Value-from-PDF step unless it already is a PDF step (a value or a pattern); A list makes it a From-a-list step unless it already is one, and opens the list chooser; Click on the PDF opens the picker (disabled until a PDF is in the list). If step 1 is a source step of the other kind it is replaced; if step 1 is a modifier, the source step is inserted in front of it.
+  - *Files go:* Rename in place | Copy to… | Move to…. The last two open a popover with the folder, Choose… and the chips `{value}`, `{n}` and `{date}`.
+  - *If taken:* Add (1) | Skip | Replace (Recycle Bin).
+  - *Matching files:* Rename too | Leave alone.
+  - *Reset.*
+- **Command bar, Split:**
+  - *Profile.*
+  - *Split by:* Value | People | Rows | Parts | Sheets.
+  - *Sheet:* only when the first file has several sheets and the mode is not Sheets.
+  - *Header:* Row 1 | Manual…, hidden in Sheets mode. Manual… opens the grid of the file's first rows, and the button then reads "Row N".
+  - *Save to:* the folder (with favourites and Choose…), the format (Same type | .xlsx | .csv) and "If taken" (add (1) | skip | replace), each in its own popover.
+  - *Reset.*
+- **Reset** puts the rules back to the loaded profile (to the defaults when no profile is loaded), returns the left column to its summary and clears the file list. It is unavailable while a batch runs.
+- **Left column, Rename:** "New name" as numbered steps.
+  - Each step shows a one-line title of what it does, for example `Text after "Invoice No.:"`. A click opens its editor; one editor is open at a time. Arrows move a step up or down, and a cross removes it.
+  - "+ Add a step" opens a menu: Add text, Replace, Remove, Trim spaces, Change case, Numbering, Date, Pattern from PDF, Value from PDF, From a list.
+  - An Example sits at the bottom: the first ready PDF's new name with the found value marked.
+- **Left column, Split:** the chosen mode's own fields under its title.
+  - Split by value: the column, the values table (value, label, payable), a paste area for rows from Excel, and Keep non-matching rows.
+  - Split among people: the names with weights, Even blocks | Keep groups together (with its group column), One file per person | Assigned to column, and Summary.
+  - Rows per file and Equal parts: one number. One file per sheet: nothing more.
+  - Rare options sit in two closed disclosures at the bottom, each showing its current value on its summary line: *File names* (the template) and *Subfolders and archive*.
+- **Summary mode:** with a saved profile loaded and not edited, the left column shows a card with the profile's name and one line per setting (a label and its value), each with a Change link, plus an Edit button. Rename has one "New name" line per step, then Files go, If taken and Matching files. Split has Split by, Header, Save to, File names, Subfolders and Archive; a setting the mode doesn't use has no line. Change opens the editor and focuses that setting, opening its disclosure if it is in one; Edit opens the editor. Edit, Change or any change to the rules shows the editor; loading a profile or Reset brings the summary back. Without a profile the editor shows. The card holds no sentence or other explanatory text.
 - **Empty state:** a large drop zone, "Drop files or folders here", with Add files / Add folder and an "Include subfolders" toggle.
 - **Panels** slide in from the right over the current tool. Esc closes them, and the tool keeps its state underneath.
   - **History**, with two tabs:
-    - *Batches:* both tools, filterable. Each batch offers Undo, Re-run (Split, while sources exist), Export report (.xlsx/.csv: date, old path, new path, result) and Show files.
+    - *Batches:* both tools, filterable. Each batch offers Undo, Re-run (Split, while sources exist), Export report and Show files. Export report saves an .xlsx (default) or a .csv with one row per file under the headings Date, Old path, New path and Result (Done, Archived, Not finished, or the failure's reason). The date is the batch's time. The .csv is UTF-8 with a byte-order mark, so Excel reads it correctly.
     - *Log:* every error and warning from the engines, workers and app, with time, tool, file, a plain-language message and expandable technical details. Filter by tool and severity; Export .txt. Never sent anywhere.
   - **Profiles:** Rename and Split profiles; create, edit, duplicate, delete; JSON import/export, which also accepts old Nomina and Splitify profile files.
   - **Settings:** theme, updates, default folders, archive originals toggle, import old data, feedback (opens a GitHub issue), about.
@@ -227,32 +256,54 @@ States and timing:
 
 ### Steps
 
-A Rename setup is an ordered list of **steps**. Each step runs on a file's **base name** (the extension is kept unless a step targets it). Steps that fail for a file mark it *attention* with a reason; other files continue. The preview recalculates live, debounced by 150 ms.
+A Rename setup is an ordered list of **steps**. Each step runs on a file's **base name** (the extension is kept). A new setup starts with one empty Value-from-PDF step.
 
-**Source steps** replace the name with a value:
+- Steps run on PDFs, in the order shown. A paired companion file takes its PDF's final name instead (see Companion files).
+- A step that fails for a file marks it *attention* with a reason; other files continue.
+- The preview recalculates live, debounced by 150 ms.
 
-- **Value from PDF:** keyword, position (before | after | above | below), and occurrence (1st by default). PDFs only. The value becomes the name and is also exposed as `{value}`.
-- **Pattern from PDF:** a preset (invoice-style number, date) or a custom regular expression, plus occurrence. Or a metadata field (Title, CreationDate).
-- **From a list:** load .xlsx or .csv, then pick the *match* column and the *new name* column. Match against either the current file name (without extension) or `{value}` from an earlier step. Matching is exact and ignores case and leading/trailing spaces.
+**Source steps** replace the name with a value. A value found in the PDF (by Value from PDF or Pattern from PDF) is also exposed as `{value}`; a list lookup is not.
 
-**Modifier steps:**
+- **Value from PDF:** keyword (empty to start), position (After to start; before | after | above | below), and match number (1 to start). PDFs only. The rules are under "The 1.4.6 engine".
+- **Pattern from PDF:** one of five, plus a match number (1 to start) for the first three. Invoice-style number is the default.
+  - *Invoice-style number:* one to six capital letters, an optional `-` or `/`, then three or more digits and further `-` or `/` digit groups (`INV-2026-0042`, `A12345`).
+  - *Date:* `yyyy-MM-dd`, or day, month and year separated by `.` or `/` (`3.7.2026`, `03/07/26`), as written in the PDF.
+  - *Custom pattern:* a regular expression. The first capture group is the value if it has one, otherwise the whole match. An invalid expression, or one that matches empty text, shows its error in the editor, and a file with no non-empty match is *attention: Pattern not found*.
+  - *Document title* and *Creation date* (as `yyyy-MM-dd`): from the PDF's document info. A PDF without one is *attention: Pattern not found*.
+  - The pattern runs over the PDF's text items joined by single spaces. Empty matches never count.
+- **From a list:** choose an .xlsx, .xls or .csv file. Its first row names the columns (any case, trimmed). Pick the *match* column and the *new name* column, and what to match: the current file name without its extension (default) or the value found by an earlier step.
+  - Matching is exact and ignores case and leading and trailing spaces. When a match occurs twice the first row wins, and rows with an empty match or name are ignored.
+  - A file that is not in the list is *attention: Not in the list*.
+  - A list that cannot be read (moved, open in Excel, a column renamed since the profile was saved) marks every PDF the same way, with the reason. The editor offers Read again, and the rest of the screen keeps working.
 
-- Find & replace (plain or regex; case toggle; all or first).
-- Add text (start | end | at position N).
-- Remove (characters at a position range | digits | text between two markers).
-- Trim spaces and collapse doubles.
-- Case (UPPER, lower, Title, Sentence).
-- Numbering (`{n}` with start, step and zero-padding; ordered by the list as shown).
-- Date (today | file modified | file created; format such as `yyyy-MM-dd`).
+**Modifier steps** change the name so far:
 
-**Click value on PDF** is not a step. It's an editor for Value-from-PDF:
+| Step | What it does | Starts as |
+|---|---|---|
+| Replace | Finds text and replaces it: plain text or a regular expression (where the replacement may use `$1`), match case on or off, every match or the first. Does nothing while Find is empty. | Every match on; match case off; regular expression off |
+| Add text | Text at the start, text at the end, and optionally text inserted at position N (0 is before the first character). | All empty |
+| Remove | Characters N to M (1-based, inclusive), all digits, or the text between two markers, markers included (the first pair only). | Characters 1 to 1; markers `(` and `)` |
+| Trim spaces | Removes spaces at both ends and turns every run of spaces into one. | |
+| Change case | UPPER, lower, Title or Sentence. Title lower-cases the name, then capitalizes the first character after the start, a space, `_` or `-`. Sentence lower-cases the name, then capitalizes its first letter. | UPPER |
+| Numbering | Adds a number, start + position × step, zero-padded to the digit count. The position is the PDF's place among the PDFs in the list as shown. The number is also `{n}`. | Start 1; step 1; 3 digits; at the end; separator `_` |
+| Date | Adds a date: today, the file's date modified or its date created, in local time. The format uses `yyyy`, `yy`, `MM`, `dd`, `HH` and `mm`; other characters stay as typed. The date is also `{date}`. | Today; `yyyy-MM-dd`; at the start; separator `_` |
 
-1. Open a file's page (rendered by pdf.js in the worker).
+**Click on the PDF** is not a step. It is a picker for Value-from-PDF, opened from "Name from" on the bar (it shows the first PDF) or from Needs attention for a file whose keyword was not found:
+
+1. The PDF's page is drawn by pdf.js in the worker, with previous and next buttons for more pages.
 2. Words are shown as hoverable boxes; click the value.
-3. Vellova proposes the nearest label word or words, and the position, using the same geometry the engine uses. You can adjust it.
-4. The step is filled in and immediately re-run over all files.
+3. Vellova proposes the nearest label word and the position, using the same geometry the engine uses. It tries after, below, before, then above, looks at the three nearest words on each side, and keeps the first label for which the engine gives back exactly the clicked text. A word with a digit in it is never proposed as a label, because it is more likely another value; a label such as "Line 2" is typed. When nothing fits, the keyword field is empty and focused.
+4. The keyword, position and match number stay editable, and "Gives" shows the value the engine finds with them. **Use this** fills the first Value-from-PDF step (or becomes step 1, replacing a pattern or list source) and the preview is re-run over all files at once.
 
-**Destination:** rename in place | copy to folder | move to folder. The folder path may contain `{value}`, `{date}` and `{n}` ("Sort into folders"); missing folders are created.
+**Destination:** rename in place | copy to folder | move to folder.
+
+- Move renames each file into the folder, so it leaves its old place. Undo moves it back.
+- The folder path may contain `{value}`, `{n}` and `{date}` ("Sort into folders"); missing folders are created.
+  - `{value}` is the value the PDF's last Value-from-PDF or Pattern step found; for a file without one (a typed name, a failed PDF, or steps that find no value) it is `_`.
+  - `{n}` is the number a Numbering step gave the file, otherwise the PDF's place among the PDFs in the list (1, 2, …).
+  - `{date}` is the date a Date step gave the file, otherwise today as `yyyy-MM-dd`.
+  - Each filled-in part is made safe on its own: `\ / : * ? " < > |` and control characters become `_`, trailing dots and spaces are removed, and an empty part becomes `_`. A value can therefore never be `.` or `..` and never leaves the chosen folder. The template's own text stays as typed.
+- In a folder, a companion file goes beside its PDF.
 
 **Name safety:**
 - Characters `\ / : * ? " < > |` and control characters become `_`.
@@ -298,9 +349,14 @@ Each companion file is matched against the set of extracted PDF values in one pa
 
 ### Explorer integration
 
-The installer adds classic context-menu entries for files and folders: **Rename with Vellova** and **Split with Vellova**. These start the app (or focus the running instance via single-instance) with the paths loaded.
+The installer adds classic context-menu entries under `HKCU\Software\Classes`, so no admin rights are needed, and the uninstaller removes them:
 
-Unsigned apps can't register in the Windows 11 compact menu, so the entries appear under *Show more options*, or Shift+F10. The installer uses `HKCU`, so no admin is needed.
+- **Rename with Vellova** on .pdf, .xlsx, .csv, .xml and .txt files and on folders;
+- **Split with Vellova** on .xlsx, .xls and .csv files and on folders.
+
+Each entry runs `Vellova.exe --rename "<path>"` or `--split "<path>"` and has `MultiSelectModel` set to `Player`, so a selection of many files starts one process per file. The first process opens the app; the others pass their path to the running instance (single-instance), which comes to the front. The app collects every launch and adds all the paths to one list on the right tool, closing any open panel. A folder is read as if dropped on the window: Rename follows "Include subfolders when adding a folder" in Settings, and Split reads only the folder's own files. Files the tool doesn't take are left out. While the tour runs, files sent from Explorer are not added, and the Log says so.
+
+Unsigned apps can't register in the Windows 11 compact menu, so the entries appear under *Show more options*, or Shift+F10.
 
 ## Split
 
@@ -373,6 +429,8 @@ Ported from Splitify's approved design (`Splitify/docs/superpowers/specs/2026-08
 | Reason | Actions |
 |---|---|
 | Keyword not found | Click value on PDF · Type name · Skip |
+| Pattern not found | Type name · Skip |
+| Not in the list | Type name · Skip |
 | Scanned PDF (no text layer: 0 text items on every page) | Type name · Skip |
 | Same value as another file | Keep (1) suffix · Edit name |
 | Target name exists | Add (1) · Skip · Replace (Recycle Bin) |
@@ -412,7 +470,7 @@ No real client files are ever used in the repo or shared.
   - the name template;
   - migration mapping from the real old JSON shapes, using synthetic examples.
 - **Rust tests:** journal written per operation; undo reverses in order and skips changed files; swap and cycle renames; case-only rename; Recycle Bin replace; archive collision counter; cross-volume move.
-- **Release checklist** (manual): install on a clean Windows user; run the SmartScreen path; import old data; rename the fixture batch and undo it; split by each mode and undo; update from the previous version; check reduced motion; check keyboard-only use.
+- **Release checklist** (manual): install on a clean Windows user; run the SmartScreen path; import old data; rename the fixture batch and undo it; split by each mode and undo; update from the previous version; check reduced motion; check keyboard-only use of both screens; check 1366×768 at 125% scaling; run the tour from Settings; right-click files and folders in Explorer.
 - **Performance budget:** cold start under 1 s; preview of 200 PDFs within 10 s; split of 50,000 rows within 10 s, with the island animating smoothly throughout.
 
 ## Delivery
@@ -431,6 +489,7 @@ One spec, three milestones, each with its own implementation plan and each relea
 3. **Milestone 3: Rename extras.**
    - Click value on PDF, Pattern from PDF, From a list, all modifier steps.
    - Sort into folders, report export, Explorer right-click.
+   - The command bar and focused left column on both screens, profile summaries, Reset, and the Done island's Open folder and Open file.
 
 ## Out of scope (possible later)
 
