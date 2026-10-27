@@ -51,6 +51,8 @@ describe('stepLabel', () => {
   it('names number and date steps', () => {
     expect(text({ type: 'number', start: 1, step: 1, pad: 3, at: 'end', sep: '_' })).toBe('Number from 001, at the end');
     expect(text({ type: 'number', start: 7, step: 1, pad: 1, at: 'start', sep: '_' })).toBe('Number from 7, at the start');
+    expect(text({ type: 'number', start: 7, step: 1, pad: 1e9, at: 'end', sep: '_' })).toBe(`Number from ${'0'.repeat(19)}7, at the end`);
+    expect(text({ type: 'number', start: 7, step: 1, pad: -3, at: 'end', sep: '_' })).toBe('Number from 7, at the end');
     expect(text({ type: 'date', from: 'modified', format: 'yyyy-MM-dd', at: 'start', sep: '_' })).toBe('Date modified as yyyy-MM-dd, at the start');
     expect(text({ type: 'date', from: 'created', format: 'yyyyMMdd', at: 'end', sep: '_' })).toBe('Date created as yyyyMMdd, at the end');
     expect(text({ type: 'date', from: 'today', format: 'yyyyMMdd', at: 'end', sep: '_' })).toBe("Today's date as yyyyMMdd, at the end");

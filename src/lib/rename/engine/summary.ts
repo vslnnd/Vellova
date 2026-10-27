@@ -29,7 +29,7 @@ export function stepLabel(s: Step): string {
     case 'case':
       return { upper: 'UPPER CASE', lower: 'lower case', title: 'Title Case', sentence: 'Sentence case' }[s.to];
     case 'number':
-      return `Number from ${String(s.start).padStart(s.pad, '0')}, at the ${s.at}`;
+      return `Number from ${String(s.start).padStart(Math.min(Math.max(s.pad, 0), 20), '0')}, at the ${s.at}`;
     case 'date':
       return `${{ today: "Today's date", modified: 'Date modified', created: 'Date created' }[s.from]} as ${s.format}, at the ${s.at}`;
   }

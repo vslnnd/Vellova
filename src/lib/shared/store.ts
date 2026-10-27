@@ -47,9 +47,15 @@ function splitSettings(v: unknown): Settings['split'] {
   };
 }
 
-/** A loaded profiles file: profiles are checked one by one (a file from before Split has no split profiles). */
-export function normalizeProfiles(v: { rename?: unknown; split?: unknown }): ProfilesFile {
-  const each = <T>(list: unknown, one: (p: unknown) => T | null): T[] => (Array.isArray(list) ? list : []).flatMap((p) => one(p) ?? []);
+/** A loaded profiles file: profiles are checked one by one (a file from before Split has no split profiles). `warn` is told about each one dropped. */
+export function normalizeProfiles(v: { rename?: unknown; split?: unknown }, warn: (message: string) => void = () => {}): ProfilesFile {
+  const each = <T>(list: unknown, one: (p: unknown) => T | null): T[] =>
+    (Array.isArray(list) ? list : []).flatMap((p) => {
+      const kept = one(p);
+      const name = isObj(p) && typeof p.name === 'string' ? p.name : '';
+      if (!kept) warn(`${name ? `The profile "${name}"` : 'A profile without a name'} could not be read and was left out.`);
+      return kept ?? [];
+    });
   return { ...v, rename: each(v.rename, renameProfile), split: each(v.split, splitProfile) };
 }
 

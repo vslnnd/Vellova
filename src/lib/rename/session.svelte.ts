@@ -17,7 +17,7 @@ import { mergeFiles, PDF, pathKey } from './engine/files';
 import { pairCompanions } from './engine/pairing';
 import { classifyPdfError } from './engine/pdfItems';
 import { planRename, readResults } from './engine/planner';
-import { DEFAULT_RULES, matchNo, profileFromRules, rulesFromProfile, type RenameRules } from './engine/profile';
+import { DEFAULT_RULES, healStep, profileFromRules, rulesFromProfile, type RenameRules } from './engine/profile';
 import { formatDate, listKey, listMap, patternError, runSteps, type ListRead, type Named, type PdfText } from './engine/steps';
 import { readPdfText } from './pdf';
 
@@ -60,7 +60,7 @@ export const session = $state({
 
 const KEYWORD = 'Enter a keyword to find the value.';
 
-/** Why PDFs wait instead of being read: the first keyword is empty, or a custom pattern is broken. */
+/** Why PDFs wait instead of being read: the first keyword is empty, a custom pattern is broken, or a list step is not set up yet. */
 function waitReason(steps: Step[]): string | null {
   const value = steps.find((s) => s.type === 'pdfValue');
   if (value && !value.keyword.trim()) return KEYWORD;
@@ -68,6 +68,7 @@ function waitReason(steps: Step[]): string | null {
     const e = patternError(s);
     if (e) return e;
   }
+  if (steps.some((s) => s.type === 'list' && (!s.path || !s.match.trim() || !s.name.trim()))) return 'Choose a list and its two columns.';
   return null;
 }
 
@@ -228,8 +229,8 @@ export async function refresh() {
   const stale = () => gen !== generation;
   const files = $state.snapshot(session.files);
   const rules = $state.snapshot(session.rules);
-  // a number input can leave a match number empty or fractional
-  const steps = rules.steps.map((s) => ('occurrence' in s ? { ...s, occurrence: matchNo(s.occurrence) } : s));
+  // a number input can leave a number empty or fractional: the preview runs the numbers that get saved
+  const steps = rules.steps.map(healStep);
   const wait = waitReason(steps);
   const needPdf = steps.some((s) => s.type === 'pdfValue' || s.type === 'pdfPattern');
   session.loading = true;
@@ -512,13 +513,17 @@ export const edited = {
 export function saveProfile(name?: string) {
   const list = data.profiles.rename;
   const current = list.find((p) => p.id === session.profileId);
+  let saved: RenameProfile;
   if (current && !name) {
-    Object.assign(current, profileFromRules($state.snapshot(session.rules), current.name, current.id, current.desc));
+    saved = profileFromRules($state.snapshot(session.rules), current.name, current.id, current.desc);
+    Object.assign(current, saved);
   } else {
-    const p = profileFromRules($state.snapshot(session.rules), name ?? 'New profile', crypto.randomUUID());
-    list.push(p);
-    session.profileId = p.id;
+    saved = profileFromRules($state.snapshot(session.rules), name ?? 'New profile', crypto.randomUUID());
+    list.push(saved);
+    session.profileId = saved.id;
   }
+  // the screen shows what was stored (numbers healed), so saving never leaves the profile "edited"
+  session.rules = rulesFromProfile(saved);
   save('profiles');
 }
 

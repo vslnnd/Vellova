@@ -23,7 +23,7 @@ export function matchNo(v: unknown): number {
 }
 
 export function profileFromRules(r: RenameRules, name: string, id: string, desc = ''): RenameProfile {
-  return { id, name, desc, steps: structuredClone(r.steps).map(healStep) as Step[], pair: r.pair, destination: { ...r.destination }, conflict: r.conflict };
+  return { id, name, desc, steps: structuredClone(r.steps).map(healStep), pair: r.pair, destination: { ...r.destination }, conflict: r.conflict };
 }
 
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -57,10 +57,25 @@ export function validStep(v: unknown): v is Step {
   return typeof t === 'string' && Object.hasOwn(SHAPES, t) && fits(SHAPES[t as Step['type']], v);
 }
 
-/** Stored match numbers that a number input once let through (null, 1.5) are healed rather than dropping the profile. */
-function healStep(s: unknown) {
+/** A number field: null (a cleared number input) and non-finite numbers become `fallback`, decimals are floored. Other types are left for validStep to reject. */
+const whole = (v: unknown, fallback: number) => (v === null ? fallback : typeof v !== 'number' ? v : Number.isFinite(v) ? Math.floor(v) : fallback);
+
+/** Numbers that a number input once let through (null, 1.5) are healed to the defaults of NEW_STEP rather than dropping the profile. */
+export function healStep<T>(s: T): T {
   const o = obj(s);
-  return o.type === 'pdfValue' || o.type === 'pdfPattern' ? { ...o, occurrence: matchNo(o.occurrence) } : s;
+  switch (o.type) {
+    case 'pdfValue':
+    case 'pdfPattern':
+      return { ...o, occurrence: matchNo(o.occurrence) } as T;
+    case 'number':
+      return { ...o, start: whole(o.start, 1), step: whole(o.step, 1), pad: whole(o.pad, 3) } as T;
+    case 'remove':
+      return { ...o, from: whole(o.from, 1), to: whole(o.to, 1) } as T;
+    case 'addText':
+      return (o.insert && typeof o.insert === 'object' ? { ...o, insert: { ...o.insert, at: whole(obj(o.insert).at, 0) } } : o) as T;
+    default:
+      return s;
+  }
 }
 
 /** One stored or imported profile: bad steps or a missing id or name drop it, missing options get defaults. */

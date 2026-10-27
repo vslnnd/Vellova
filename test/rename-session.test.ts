@@ -125,6 +125,23 @@ describe('rename session with steps', () => {
     expect(s.plan.items.map((i) => i.name)).toEqual(['Y_T.pdf', 'Y_T (1).pdf']);
   });
 
+  it('an unset list waits instead of reporting a missing file or column', async () => {
+    const unset = (o: Partial<Extract<Step, { type: 'list' }>>): Step => ({ ...listStep, ...o }) as Step;
+    const wait = 'Choose a list and its two columns.';
+    for (const step of [unset({ path: '', match: '', name: '' }), unset({ match: ' ' }), unset({ name: '' }), unset({ path: '' })]) {
+      const s = await load([step]);
+      expect(s.plan.items.map((i) => [i.status, i.detail]), JSON.stringify(step)).toEqual([['pending', wait], ['pending', wait]]);
+      expect(s.session.listErrors).toEqual({});
+    }
+    const s = await load([listStep]);
+    expect(s.plan.items.map((i) => i.status)).toEqual(['ready', 'attention']);
+  });
+
+  it('a cleared number runs as its default, the same as it is saved', async () => {
+    const s = await load([{ type: 'number', start: null as unknown as number, step: 1.5, pad: 3, at: 'end', sep: '_' }]);
+    expect(s.plan.items.map((i) => i.name)).toEqual(['a_001.pdf', 'b_002.pdf']);
+  });
+
   it('loads a profile kept in app state', async () => {
     const s = await import('../src/lib/rename/session.svelte');
     const { data } = await import('../src/lib/shared/state.svelte');
@@ -161,6 +178,15 @@ describe('rename Reset and edited', () => {
     expect(loaded.edited.value).toBe(false);
     loaded.session.rules.steps.push({ type: 'trim' });
     expect(loaded.edited.value).toBe(true);
+  });
+
+  it('saving heals the numbers and leaves the profile unedited', async () => {
+    const s = await use();
+    s.session.rules.steps = [{ type: 'number', start: null as unknown as number, step: 1, pad: 3, at: 'end', sep: '_' }];
+    expect(s.edited.value).toBe(true);
+    s.saveProfile();
+    expect(s.session.rules.steps).toEqual([{ type: 'number', start: 1, step: 1, pad: 3, at: 'end', sep: '_' }]);
+    expect(s.edited.value).toBe(false);
   });
 
   it('Reset restores the loaded profile, empties the file list and ends editing', async () => {

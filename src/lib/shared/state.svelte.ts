@@ -39,7 +39,7 @@ export async function loadAll() {
   };
   await attempt('log', async () => { data.log = pruneLog(parseLog(await ipc.dataRead(FILE.log)), Date.now()); });
   await attempt('settings', async () => { data.settings = withDefaults(await loadJson<unknown>(io, FILE.settings, {}, isObj, corrupt)); });
-  await attempt('profiles', async () => { data.profiles = normalizeProfiles(await loadJson<ProfilesFile>(io, FILE.profiles, { rename: [], split: [] }, isProfiles, corrupt)); });
+  await attempt('profiles', async () => { data.profiles = normalizeProfiles(await loadJson<ProfilesFile>(io, FILE.profiles, { rename: [], split: [] }, isProfiles, corrupt), (message) => log({ level: 'warn', tool: 'app', message })); });
   await attempt('history', async () => { data.history = capHistory(await loadJson<Batch[]>(io, FILE.history, [], isHistory, corrupt)); });
   data.loaded = true;
 }

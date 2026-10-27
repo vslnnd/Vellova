@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SPLIT_RULES } from '../src/lib/split/engine/profile';
 import { planSplitifyImport, SPLITIFY_FILES } from '../src/lib/migrate/splitify';
 import { freshProfiles, importProfiles, isEmpty, mapHistory, mapProfiles, mapSettings, mergeImport, planImport } from '../src/lib/migrate/nomina';
@@ -230,6 +230,28 @@ describe('rename profiles with the new steps', () => {
     const out = normalizeProfiles({ rename: [profile([value(1.5)], 'a'), profile([value(null)], 'b')] });
     expect(out.rename.map((p) => [p.id, p.steps[0]])).toEqual([['a', value(1)], ['b', value(1)]]);
     expect(validStep(value(1.5))).toBe(false);
+  });
+
+  it('a cleared or fractional number in a number, remove or add text step is healed, not dropped', () => {
+    const steps = (list: unknown[]) => renameProfile(profile(list))?.steps;
+    expect(steps([{ ...NEW_STEP.number, start: null }])).toEqual([NEW_STEP.number]);
+    expect(steps([{ ...NEW_STEP.number, start: 2.7, step: null, pad: 1.5 }])).toEqual([{ ...NEW_STEP.number, start: 2, step: 1, pad: 1 }]);
+    expect(steps([{ ...NEW_STEP.number, pad: Infinity }])).toEqual([NEW_STEP.number]);
+    expect(steps([{ ...NEW_STEP.remove, from: 1.5, to: null }])).toEqual([NEW_STEP.remove]);
+    expect(steps([{ ...NEW_STEP.addText, insert: { text: '!', at: null } }])).toEqual([{ ...NEW_STEP.addText, insert: { text: '!', at: 0 } }]);
+    expect(steps([{ ...NEW_STEP.addText, insert: { text: '!', at: 2.5 } }])).toEqual([{ ...NEW_STEP.addText, insert: { text: '!', at: 2 } }]);
+    const out = normalizeProfiles({ rename: [profile([{ ...NEW_STEP.number, start: null }], 'a')] });
+    expect(out.rename.map((p) => p.id)).toEqual(['a']);
+  });
+
+  it('normalizeProfiles names each profile it still drops', () => {
+    const warn = vi.fn();
+    normalizeProfiles({ rename: [{ ...profile([{ type: 'case', to: 'snake' }], 'bad'), name: 'Bad one' }, profile([NEW_STEP.trim], 'ok'), 7], split: [{ name: 'Split one' }] }, warn);
+    expect(warn.mock.calls.map((c) => c[0])).toEqual([
+      expect.stringContaining('"Bad one"'),
+      expect.stringContaining('A profile without a name'),
+      expect.stringContaining('"Split one"'),
+    ]);
   });
 
   it('profileFromRules stores a whole match number, at least 1', () => {
