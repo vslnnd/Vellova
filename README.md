@@ -14,11 +14,13 @@ GitHub Actions builds every installer from this repository. Updates are checked 
 
 ## What it does
 
-- **Rename:** finds a keyword in each PDF (for example `Invoice No.:`) and uses the value next to it (after, before, above or below) as the new name. It can add text before or after the value.
+- **Rename:** builds each new name from steps. A step takes a value from the PDF (a keyword such as `Invoice No.:` and the text after, before, above or below it, or a click on the value in the PDF), a pattern or the document info, or a name from a list in a spreadsheet. Modifier steps then replace, add or remove text, trim spaces, change case, number and date. Files are renamed in place, or copied or moved into a folder that can be sorted with `{value}`, `{n}` and `{date}`.
 - **Matching files:** `.xlsx`, `.csv`, `.xml` and `.txt` files that contain a PDF's value get the same name.
 - **Safe by design:** you see every new name before anything changes. Names that clash get ` (1)`, or you can choose Skip or Replace. Replaced files go to the Recycle Bin. Every batch can be undone from History.
-- **Needs attention:** files without a value, scanned PDFs and locked files are listed with a reason, so you can fix them and apply only those.
-- **Split:** cuts `.xlsx`, `.xls` and `.csv` files into several files. Choose a mode:
+- **Needs attention:** files without a value, scanned PDFs, names missing from a list and locked files are listed with a reason, so you can type a name, click the value on the PDF, retry or skip them, and apply only those fixes.
+- **After a batch:** Open folder and Open file are offered on the island. History exports a batch as an `.xlsx` or `.csv` report.
+- **Explorer:** Rename with Vellova and Split with Vellova are in the right-click menu of files and folders, under *Show more options* on Windows 11.
+- **Split:** cuts `.xlsx`, `.xls` and `.csv` files into several files. Choose a mode:
   - *By value:* one file per value of a column (a list of values you set, with an optional label for each), plus an optional NON_MATCHING file.
   - *Between people:* shares the rows out by weight, in blocks or by whole groups, as one file per person or as one file with an Assigned to column. A summary file or sheet can be added.
   - *By number of rows* or *Into equal parts:* fixed-size or evenly sized pieces.

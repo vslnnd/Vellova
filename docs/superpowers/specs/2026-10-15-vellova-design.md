@@ -96,16 +96,17 @@ Both engines are pure functions that produce a **Plan**: a list of operations. I
 type Op =
   | { kind: 'rename'; from: string; to: string; replace?: boolean } // a move is a rename whose target is in another folder
   | { kind: 'copy'; from: string; to: string; replace?: boolean };
-type PlanItem = { id: string; source: string; op: Op | null; status: 'ready' | 'paired' | 'duplicate' | 'unchanged' | 'attention'; reason?: AttentionReason };
+type PlanItem = { id: string; source: string; op: Op | null; status: 'ready' | 'paired' | 'duplicate' | 'unchanged' | 'attention' | 'skipped' | 'pending'; name?: string; reason?: Reason; detail?: string };
 ```
 
 - The preview renders the Plan. Nothing touches disk until the user presses the main button.
+- `pending` rows wait for an input (a keyword, a list and its columns, a full folder path) and have no operation; `skipped` rows are left out by the user or by the Skip rule. `detail` is a short status or error text.
 - Rust then executes exactly the Plan's operations in order.
 - Engines are unit-tested without the UI.
 
 ### Rust commands
 
-- **`apply_plan(batchId, ops)`** executes the operations in order and appends a journal entry after each one. Each entry holds the operation, the result, and the final file's size and modified time. Swap and cycle renames (a→b, b→a) go through temporary names. A case-only rename (`a.pdf` → `A.pdf`) goes through a temporary name. Each operation returns its own result, so one failure doesn't stop the rest. Missing folders are created for copies and for moves. A move across volumes copies the file, then removes the source. Split outputs are staged by `stage_write` (Vellova's own staging files) and placed by journaled `copy` ops. Archiving is a `rename` op whose name the planner picks.
+- **`apply_plan(batchId, ops)`** executes the operations in order and appends a journal entry after each one. Each entry holds the operation, the result, and the final file's size and modified time. Swap and cycle renames (a→b, b→a) go through temporary names. A case-only rename (`a.pdf` → `A.pdf`) goes through a temporary name. Before the first operation it refuses the whole plan if any path is not absolute, so nothing can land relative to the program. Each operation returns its own result, so one failure doesn't stop the rest. Missing folders are created for copies and for moves. A move across volumes copies the file, then removes the source. Split outputs are staged by `stage_write` (Vellova's own staging files) and placed by journaled `copy` ops. Archiving is a `rename` op whose name the planner picks.
 - **`undo_batch(batchId)`** walks the journal backwards:
   - renames and moves are reversed;
   - copied and written files go to the Recycle Bin;
@@ -209,6 +210,7 @@ States and timing:
 - Radius 6 for controls and 8 for panels; 999 for the island and pills.
 - Geist for UI text, Geist Mono for file names and values.
 - The theme defaults to `system`.
+- No screen carries hint lines, subtitles or explanatory text: labels, values and short error or status text stay.
 
 ### Screens and panels
 
@@ -219,7 +221,7 @@ States and timing:
   - the footer: a count ("6 files will be renamed · 1 needs attention"; "copied" or "moved" for those destinations), Undo last batch, and the main button.
 - **Command bar, Rename:**
   - *Profile:* a select with Save and Save as new profile.
-  - *Name from:* Text in the PDF | Click on the PDF | A list. Text in the PDF makes step 1 a Value-from-PDF step unless it already is a PDF step (a value or a pattern); A list makes it a From-a-list step unless it already is one, and opens the list chooser; Click on the PDF opens the picker (disabled until a PDF is in the list). If step 1 is a source step of the other kind it is replaced; if step 1 is a modifier, the source step is inserted in front of it.
+  - *Name from:* Text in the PDF | Click on the PDF | A list. Text in the PDF makes step 1 a Value-from-PDF step unless it already is a PDF step (a value or a pattern); A list makes it a From-a-list step unless it already is one, and focuses its Choose list… button; Click on the PDF opens the picker (disabled until a PDF is in the list). If step 1 is a source step of the other kind it is replaced; if step 1 is a modifier, the source step is inserted in front of it.
   - *Files go:* Rename in place | Copy to… | Move to…. The last two open a popover with the folder, Choose… and the chips `{value}`, `{n}` and `{date}`.
   - *If taken:* Add (1) | Skip | Replace (Recycle Bin).
   - *Matching files:* Rename too | Leave alone.
@@ -274,6 +276,7 @@ A Rename setup is an ordered list of **steps**. Each step runs on a file's **bas
 - **From a list:** choose an .xlsx, .xls or .csv file. Its first row names the columns (any case, trimmed). Pick the *match* column and the *new name* column, and what to match: the current file name without its extension (default) or the value found by an earlier step.
   - Matching is exact and ignores case and leading and trailing spaces. When a match occurs twice the first row wins, and rows with an empty match or name are ignored.
   - A file that is not in the list is *attention: Not in the list*.
+  - While no list or either column is chosen, PDFs wait with "Choose a list and its two columns." instead of reporting a missing file or column.
   - A list that cannot be read (moved, open in Excel, a column renamed since the profile was saved) marks every PDF the same way, with the reason. The editor offers Read again, and the rest of the screen keeps working.
 
 **Modifier steps** change the name so far:
@@ -284,7 +287,7 @@ A Rename setup is an ordered list of **steps**. Each step runs on a file's **bas
 | Add text | Text at the start, text at the end, and optionally text inserted at position N (0 is before the first character). | All empty |
 | Remove | Characters N to M (1-based, inclusive), all digits, or the text between two markers, markers included (the first pair only). | Characters 1 to 1; markers `(` and `)` |
 | Trim spaces | Removes spaces at both ends and turns every run of spaces into one. | |
-| Change case | UPPER, lower, Title or Sentence. Title lower-cases the name, then capitalizes the first character after the start, a space, `_` or `-`. Sentence lower-cases the name, then capitalizes its first letter. | UPPER |
+| Change case | UPPER, lower, Title or Sentence. Title lower-cases the name, then capitalizes the first character after the start, a space, `_` or `-`. Sentence lower-cases the name, then capitalizes its first character. | UPPER |
 | Numbering | Adds a number, start + position × step, zero-padded to the digit count. The position is the PDF's place among the PDFs in the list as shown. The number is also `{n}`. | Start 1; step 1; 3 digits; at the end; separator `_` |
 | Date | Adds a date: today, the file's date modified or its date created, in local time. The format uses `yyyy`, `yy`, `MM`, `dd`, `HH` and `mm`; other characters stay as typed. The date is also `{date}`. | Today; `yyyy-MM-dd`; at the start; separator `_` |
 
@@ -298,8 +301,9 @@ A Rename setup is an ordered list of **steps**. Each step runs on a file's **bas
 **Destination:** rename in place | copy to folder | move to folder.
 
 - Move renames each file into the folder, so it leaves its old place. Undo moves it back.
+- The folder must be a full path: a drive path (`C:\` or `C:/`) or a network path (`\\server`). Until it is, the files wait with "Choose a folder to copy into." (or "move into." when the folder is empty) or "Use a full folder path.", and no operation is planned.
 - The folder path may contain `{value}`, `{n}` and `{date}` ("Sort into folders"); missing folders are created.
-  - `{value}` is the value the PDF's last Value-from-PDF or Pattern step found; for a file without one (a typed name, a failed PDF, or steps that find no value) it is `_`.
+  - `{value}` is the value the PDF's last Value-from-PDF or Pattern step found; for a file without one (a failed PDF, steps that find no value, or a typed companion without its PDF) it is `_`.
   - `{n}` is the number a Numbering step gave the file, otherwise the PDF's place among the PDFs in the list (1, 2, …).
   - `{date}` is the date a Date step gave the file, otherwise today as `yyyy-MM-dd`.
   - Each filled-in part is made safe on its own: `\ / : * ? " < > |` and control characters become `_`, trailing dots and spaces are removed, and an empty part becomes `_`. A value can therefore never be `.` or `..` and never leaves the chosen folder. The template's own text stays as typed.
@@ -329,7 +333,7 @@ The worker turns each page into items `{str (trimmed, non-empty), x = transform[
 
 **The words layer.** Exact 1.4.6 output depends on how pdf.js 3.11 grouped text, so the worker builds items from the current pdf.js and then **normalizes** them. Adjacent pieces on the same baseline (|Δy| ≤ 1) are joined into one item when the horizontal gap is smaller than about 0.25 × font size. This reproduces pdf.js 3.11's grouping for SSRS-style PDFs. The golden tests below are the judge.
 
-**Fallback if parity can't be reached:** pin `pdfjs-dist@3.11.174` in the PDF worker with `isEvalSupported: false` (which mitigates CVE-2024-4367), text extraction only. Rendering for Click-value-on-PDF still uses the current pdf.js.
+**Fallback if parity can't be reached:** pin `pdfjs-dist@3.11.174` in the PDF worker with `isEvalSupported: false` (which mitigates CVE-2024-4367), text extraction only. The picker for Click on the PDF renders with the same pinned pdf.js 3.11.174 and `isEvalSupported: false`.
 
 ### Companion files
 
@@ -349,12 +353,12 @@ Each companion file is matched against the set of extracted PDF values in one pa
 
 ### Explorer integration
 
-The installer adds classic context-menu entries under `HKCU\Software\Classes`, so no admin rights are needed, and the uninstaller removes them:
+The installer adds classic context-menu entries under `HKCU\Software\Classes`, so no admin rights are needed. The uninstaller removes them in the post-uninstall hook (`NSIS_HOOK_POSTUNINSTALL`), after the running-app check, so a cancelled uninstall keeps them:
 
 - **Rename with Vellova** on .pdf, .xlsx, .csv, .xml and .txt files and on folders;
 - **Split with Vellova** on .xlsx, .xls and .csv files and on folders.
 
-Each entry runs `Vellova.exe --rename "<path>"` or `--split "<path>"` and has `MultiSelectModel` set to `Player`, so a selection of many files starts one process per file. The first process opens the app; the others pass their path to the running instance (single-instance), which comes to the front. The app collects every launch and adds all the paths to one list on the right tool, closing any open panel. A folder is read as if dropped on the window: Rename follows "Include subfolders when adding a folder" in Settings, and Split reads only the folder's own files. Files the tool doesn't take are left out. While the tour runs, files sent from Explorer are not added, and the Log says so.
+Each entry runs `Vellova.exe --rename "<path>"` or `--split "<path>"` and has `MultiSelectModel` set to `Player`, so a selection of many files starts one process per file. The first process opens the app; the others pass their path to the running instance (single-instance), which comes to the front. The app collects every launch and adds all the paths to one list on the right tool, closing any open panel. A folder is read as if dropped on the window: Rename follows "Include subfolders when adding a folder" in Settings, and Split reads only the folder's own files. Files the tool doesn't take are left out. While the tour runs, files sent from Explorer are not added, and the Log says so. A pending "Resume the tour?" card gives way to files sent from Explorer, and is not offered when files are already on a screen.
 
 Unsigned apps can't register in the Windows 11 compact menu, so the entries appear under *Show more options*, or Shift+F10.
 
@@ -441,6 +445,7 @@ Ported from Splitify's approved design (`Splitify/docs/superpowers/specs/2026-08
 | Unreadable or corrupt file | Skip |
 
 - **Apply fixes** runs only the fixed files, inside the same batch and journal, so one Undo covers everything.
+- A group shows its title and count, and under each file only its own detail. There is no hint line. Target name exists with Replace chosen adds one short error: "This drive has no Recycle Bin, so Replace can't be used." The footer shows the number of fixed files that are ready (nothing when there are none) beside Apply fixes.
 - Worker crashes are caught, logged, and the batch's remaining files are marked *attention: internal error*. The worker is restarted.
 - Update-check failures are logged at info level and retried at the next interval, with nothing shown on the island.
 - Atomic JSON writes. A corrupt settings, profiles or history file is renamed to `*.corrupt-<date>.json`, the app starts with defaults, and the Log says so.
