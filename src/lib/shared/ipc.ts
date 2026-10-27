@@ -10,6 +10,8 @@ export const ipc = {
   dataRename: (from: string, to: string) => invoke<void>('data_rename', { from, to }),
   readLegacy: (files: string[]) => invoke<(string | null)[]>('read_legacy', { files }),
   saveText: (path: string, text: string) => invoke<void>('save_text', { path, text }),
+  /** Raw body; the path travels in a header, so it is percent-encoded (Rust decodes it). */
+  saveBytes: (path: string, bytes: Uint8Array) => invoke<void>('save_bytes', bytes, { headers: { path: encodeURIComponent(path) } }),
   readFile: async (path: string) => new Uint8Array(await invoke<ArrayBuffer>('read_file', { path })),
   listFiles: (paths: string[], recursive: boolean) => invoke<FileInfo[]>('list_files', { paths, recursive }),
   listDir: (dirs: string[]) => invoke<string[]>('list_dir', { dirs }),

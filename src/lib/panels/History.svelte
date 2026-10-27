@@ -6,6 +6,7 @@
   import { undoBatch } from '../shared/batches';
   import { ipc } from '../shared/ipc';
   import { splitPath } from '../shared/names';
+  import { reportName, reportRows, toCsv } from '../shared/report';
   import { data } from '../shared/state.svelte';
   import { logToText } from '../shared/store';
   import type { Batch } from '../shared/types';
@@ -50,6 +51,32 @@
       message = `The log couldn't be exported: ${String(e).replace(/^[a-z]+: /, '')}`;
     }
   }
+  async function exportReport(b: Batch) {
+    message = '';
+    try {
+      const picked = await saveDialog({
+        defaultPath: reportName(b),
+        filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }, { name: 'CSV', extensions: ['csv'] }],
+      });
+      if (!picked) return;
+      const rows = reportRows(b);
+      if (/\.csv$/i.test(picked)) {
+        await ipc.saveText(picked, toCsv(rows));
+      } else {
+        const XLSX = await import('xlsx');
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        ws['!cols'] = [{ wch: 17 }, { wch: 60 }, { wch: 60 }, { wch: 28 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Report');
+        // a name typed without an extension still gets the one the content has
+        const path = /\.xlsx$/i.test(picked) ? picked : `${picked}.xlsx`;
+        await ipc.saveBytes(path, new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' })));
+      }
+      message = 'Report saved.';
+    } catch (e) {
+      message = `The report couldn't be saved: ${String(e).replace(/^[a-z]+: /, '')}`;
+    }
+  }
 </script>
 
 <div class="row">
@@ -86,6 +113,7 @@
         {#if b.undoable && !b.undone}<button class="btn small" disabled={!!island.activity} onclick={() => void undoBatch(b.id)}>Undo</button>{/if}
         {#if b.rerun}<button class="btn small" disabled={!!island.activity} onclick={() => void runAgain(b)}>Run again</button>{/if}
         <button class="btn small" onclick={() => show(b)}>Show files</button>
+        <button class="btn small" onclick={() => void exportReport(b)}>Export report</button>
       </div>
       <ul>
         {#each b.items as it, i (i)}

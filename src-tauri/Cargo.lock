@@ -4528,6 +4528,7 @@ dependencies = [
 name = "vellova"
 version = "0.2.0"
 dependencies = [
+ "percent-encoding",
  "serde",
  "serde_json",
  "tauri",

@@ -38,13 +38,14 @@ pub(crate) fn read_data(path: &Path) -> Result<Option<String>, String> {
 }
 
 /// An export path from a save dialog: on a local drive (`C:\` or `\\?\C:\`; never UNC, device or other verbatim
-/// paths, which could reach a network share), absolute, and a `.txt` or `.json` file (the only kinds the app writes).
+/// paths, which could reach a network share), absolute, and a `.txt`, `.json`, `.csv` or `.xlsx` file (the only kinds
+/// the app writes).
 pub(crate) fn export_path(path: &str) -> Result<&Path, String> {
     let p = Path::new(path);
     let ext_ok = p
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("txt") || e.eq_ignore_ascii_case("json"));
+        .is_some_and(|e| ["txt", "json", "csv", "xlsx"].iter().any(|k| e.eq_ignore_ascii_case(k)));
     let drive = matches!(
         p.components().next(),
         Some(Component::Prefix(pre)) if matches!(pre.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
@@ -94,10 +95,27 @@ pub async fn read_legacy(app: AppHandle, files: Vec<String>) -> Result<Vec<Optio
         .collect())
 }
 
-/// Writes an export the user asked for (path chosen in a save dialog).
+/// Writes an export the user asked for (path chosen in a save dialog) if `export_path` allows it.
+fn write_export(path: &str, bytes: &[u8]) -> Result<(), String> {
+    fs::write(export_path(path)?, bytes).map_err(err)
+}
+
 #[tauri::command]
 pub async fn save_text(path: String, text: String) -> Result<(), String> {
-    fs::write(export_path(&path)?, text).map_err(err)
+    write_export(&path, text.as_bytes())
+}
+
+/// A path sent in a header: percent-encoded by the front end, since header values must be ASCII.
+fn header_path(raw: &str) -> Result<String, String> {
+    percent_encoding::percent_decode_str(raw).decode_utf8().map(|p| p.into_owned()).map_err(err)
+}
+
+/// Like `save_text`, for binary exports (raw body, header `path`).
+#[tauri::command]
+pub async fn save_bytes(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("expected raw bytes".into()) };
+    let raw = request.headers().get("path").and_then(|v| v.to_str().ok()).ok_or("missing header path")?;
+    write_export(&header_path(raw)?, bytes)
 }
 
 static CANCEL: AtomicBool = AtomicBool::new(false);
@@ -367,13 +385,39 @@ mod tests {
     }
 
     #[test]
-    fn export_path_must_be_absolute_txt_or_json() {
-        for good in ["C:/out/log.txt", "C:/out/Log.TXT", "C:/out/profiles.json", "C:\\out\\log.txt", "\\\\?\\C:\\out\\log.txt"] {
+    fn export_path_must_be_absolute_and_a_kind_we_write() {
+        for good in [
+            "C:/out/log.txt", "C:/out/Log.TXT", "C:/out/profiles.json", "C:\\out\\log.txt", "\\\\?\\C:\\out\\log.txt",
+            "C:/out/report.csv", "C:/out/Report.XLSX",
+        ] {
             assert!(export_path(good).is_ok(), "{good}");
         }
         for bad in ["log.txt", "out/log.txt", "\\log.txt", "C:log.txt", "C:/out/app.exe", "C:/out/run.bat", "C:/out/noext", "C:/out/log.txt.exe", "C:/out/", ""] {
             assert!(export_path(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn write_export_writes_the_bytes_and_refuses_what_export_path_refuses() {
+        let dir = tempfile::tempdir().unwrap();
+        let ok = dir.path().join("Zoë 日本語.xlsx");
+        write_export(ok.to_str().unwrap(), &[0, 1, 2, 255]).unwrap();
+        assert_eq!(fs::read(&ok).unwrap(), [0, 1, 2, 255]);
+        write_export(ok.to_str().unwrap(), &[9]).unwrap();
+        assert_eq!(fs::read(&ok).unwrap(), [9], "replaces an earlier export");
+        let bat = dir.path().join("run.bat");
+        for bad in ["report.xlsx", "C:/out/app.exe", "\\\\server\\share\\r.xlsx", bat.to_str().unwrap()] {
+            assert!(write_export(bad, b"x").is_err(), "{bad}");
+        }
+        assert!(!bat.exists());
+    }
+
+    #[test]
+    fn header_path_decodes_what_encode_uri_component_made() {
+        // encodeURIComponent('C:\\Users\\Zoë\\日本語\\r.xlsx')
+        assert_eq!(header_path("C%3A%5CUsers%5CZo%C3%AB%5C%E6%97%A5%E6%9C%AC%E8%AA%9E%5Cr.xlsx").unwrap(), "C:\\Users\\Zoë\\日本語\\r.xlsx");
+        assert_eq!(header_path("C%3A%5Cplain.csv").unwrap(), "C:\\plain.csv");
+        assert!(header_path("%FF%FE.xlsx").is_err(), "not UTF-8");
     }
 
     #[cfg(windows)]

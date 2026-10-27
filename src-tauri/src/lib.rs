@@ -32,6 +32,7 @@ pub fn run() {
             files::data_rename,
             files::read_legacy,
             files::save_text,
+            files::save_bytes,
             files::read_file,
             files::list_files,
             files::list_dir,
