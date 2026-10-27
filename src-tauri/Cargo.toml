@@ -1,6 +1,6 @@
 [package]
 name = "vellova"
-version = "0.2.0"
+version = "0.3.0"
 description = "Rename and split office files in batches"
 authors = ["vslnnd"]
 edition = "2021"
