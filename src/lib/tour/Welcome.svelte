@@ -25,7 +25,7 @@
 <h2 id="tour-title">Welcome to Vellova</h2>
 <p>
   Vellova renames files in batches, for example using an invoice number printed in a PDF, with matching spreadsheets renamed along
-  with it. Renaming any file type by your own rules is coming in the next updates, along with splitting spreadsheets.
+  with it, and splits spreadsheets into separate files.
 </p>
 <p class="hint">Everything stays on this computer. Every batch can be undone from History.</p>
 

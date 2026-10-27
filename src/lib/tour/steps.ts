@@ -64,7 +64,7 @@ export const STEPS: TourStep[] = [
   { id: 'apply', target: 'apply', text: 'Rename them.', done: (v) => !!v.batch && !v.busy, lost: numbersGone },
   { id: 'undo', target: 'undo', text: "Changed your mind? Undo puts every name back. It's also in History any time later.", done: (v) => v.undone && !v.busy },
   { id: 'profile', target: 'profile', text: 'Save this setup. Next time, pick the profile and drop files.', done: (v) => !!v.profile },
-  { id: 'tools', target: 'tools', text: 'Switch tools here. Split arrives in the next update.', done: 'next' },
+  { id: 'tools', target: 'tools', text: 'Switch between Rename and Split here.', done: 'next' },
   { id: 'history', target: 'history', text: 'History: every batch, undoable, plus the log.', done: 'next' },
   { id: 'profiles', target: 'profiles', text: 'Profiles: your saved setups.', done: 'next' },
   { id: 'settings', target: 'settings', text: 'Settings: theme, updates, and this tour again.', done: 'next' },

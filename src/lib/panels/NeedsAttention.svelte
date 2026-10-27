@@ -59,9 +59,8 @@
       {#if RETRY.includes(reason)}<button class="btn small" disabled={!!island.activity} onclick={() => items.forEach((i) => void tool.retry(key(i)))}>Retry all</button>{/if}
       <button class="btn small" onclick={() => items.forEach((i) => tool.skip(key(i)))}>Skip all</button>
     </div>
-    <p class="hint">{REASONS[reason].hint}</p>
     {#if reason === 'exists' && session.rules.conflict === 'replace'}
-      <p class="hint">If this drive has no Recycle Bin, Replace can't be used on it. Choose "Add (1)" or "Skip" for existing names in {isSplit ? 'Split' : 'Rename'}, then Retry.</p>
+      <p class="hint">This drive has no Recycle Bin, so Replace can't be used.</p>
     {/if}
     <ul>
       {#each items as it (it.id)}
@@ -96,7 +95,7 @@
 {/each}
 
 <div class="row foot">
-  <span class="hint">{ready ? `${ready} fixed ${ready === 1 ? 'file is' : 'files are'} ready.` : 'Fix files above, then apply them.'}</span>
+  {#if ready}<span class="hint">{ready} fixed {ready === 1 ? 'file is' : 'files are'} ready.</span>{/if}
   <span class="grow"></span>
   <button class="btn primary" disabled={!ready || session.busy || session.loading || session.dirty || !!island.activity} onclick={apply}>Apply fixes</button>
 </div>

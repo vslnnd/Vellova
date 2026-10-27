@@ -14,7 +14,6 @@
     pending: ['muted', 'Waiting'],
   };
   const nameOf = (p: string) => splitPath(p).name;
-  const first = $derived(session.rules.steps[0]);
   const shownName = (it: PlanItem) => session.overrides[it.source] ?? (it.name ? splitExt(it.name).base : '');
 </script>
 
@@ -32,9 +31,6 @@
     <button class="btn small" onclick={() => void pickFolder()}>Add folder</button>
     <button class="btn small" onclick={clearFiles}>Clear</button>
   </div>
-  {#if first?.type === 'pdfValue' && !first.keyword.trim()}
-    <p class="hint banner">Type the keyword that comes before the value to see the new names.</p>
-  {/if}
   <ul data-tour="preview">
     {#each plan.items as it (it.id)}
       {@const [tone, label] = PILL[it.status]}
@@ -68,7 +64,6 @@
 <style>
   .preview { flex: 1; min-height: 0; padding: 0; gap: 0; }
   .head { padding: 12px 14px; border-bottom: 1px solid var(--border); }
-  .banner { padding: 10px 14px 0; }
   .grow { flex: 1; }
   ul { list-style: none; margin: 0; padding: 4px 0; overflow: auto; flex: 1; }
   li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto auto auto; align-items: center; gap: 8px; padding: 3px 8px 3px 14px; }

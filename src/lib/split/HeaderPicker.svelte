@@ -32,7 +32,6 @@
     <span class="grow"></span>
     <button class="btn small primary" onclick={() => (open = false)}>Done</button>
   </div>
-  <p class="hint">Click the row that holds the column names. Rows above it are copied on top of every output.</p>
   {#if session.files.length > 1}
     <select class="field" aria-label="File" value={path} onchange={(e) => (file = e.currentTarget.value)}>
       {#each session.files as f (f.path)}<option value={f.path}>{splitPath(f.path).name}</option>{/each}
