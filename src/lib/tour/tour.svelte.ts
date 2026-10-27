@@ -8,6 +8,7 @@ import { join } from '../shared/names';
 import { data, log, save } from '../shared/state.svelte';
 import type { TourMarker } from '../shared/types';
 import { island, send } from '../shell/islandState.svelte';
+import { session as splitSession } from '../split/session.svelte';
 import { inSampleDir, NO_NUMBER, PAIRED, STEPS, tourProfile, withoutTour, type TourView } from './steps';
 
 export const tour = $state({
@@ -191,5 +192,11 @@ export async function tourOnStart() {
   if (!m) return;
   const resume = !m.ended;
   await cleanUp(m);
-  if (resume && !data.settings.tour && !tourActive()) tour.card = 'resume';
+  // files sent from Explorer are already on a screen: Resume would clear them
+  if (resume && !data.settings.tour && !tourActive() && !session.files.length && !splitSession.files.length) tour.card = 'resume';
+}
+
+/** Files arrived from Explorer: the "Resume the tour?" card gives way to them. */
+export function dismissResume() {
+  if (tour.card === 'resume') tour.card = null;
 }

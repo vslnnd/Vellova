@@ -30,6 +30,6 @@
   !insertmacro VellovaEach VellovaAdd
 !macroend
 
-!macro NSIS_HOOK_PREUNINSTALL
+!macro NSIS_HOOK_POSTUNINSTALL
   !insertmacro VellovaEach VellovaDel
 !macroend

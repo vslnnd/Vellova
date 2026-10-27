@@ -18,7 +18,7 @@
   import Split from './lib/split/Split.svelte';
   import { addPaths as addSplit, cancelActivity as cancelSplit, session as splitSession } from './lib/split/session.svelte';
   import Tour from './lib/tour/TourLayer.svelte'; // not Tour.svelte: on Windows it would shadow the tour.svelte(.ts) module
-  import { current, tour, tourActive, undoTour } from './lib/tour/tour.svelte';
+  import { current, dismissResume, tour, tourActive, undoTour } from './lib/tour/tour.svelte';
   import { restartToUpdate, scheduleUpdates } from './lib/updater';
 
   if (!data.settings.welcomed) tour.card = 'welcome';
@@ -45,7 +45,9 @@
   async function takeLaunches() {
     try {
       const launches = await ipc.takeLaunches();
-      if (launches.length && tourActive()) {
+      if (!launches.length) return;
+      dismissResume(); // the files win over "Resume the tour?", which would clear them
+      if (tourActive()) {
         log({ level: 'info', tool: 'app', message: 'Files sent from Explorer during the tour were not added.' });
         return;
       }
@@ -54,6 +56,7 @@
         ui.panel = null;
         await (l.tool === 'split' ? addSplit : addRename)(l.paths);
       }
+      dismissResume(); // the card may have appeared while the files were being added
     } catch (e) {
       log({ level: 'error', tool: 'app', message: 'Files sent from Explorer could not be added.', detail: String(e) });
     }

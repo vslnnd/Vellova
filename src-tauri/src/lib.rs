@@ -30,7 +30,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(launch::Pending::default())
         .setup(|app| {
-            launch::push(app.handle(), &std::env::args().collect::<Vec<_>>());
+            launch::push(app.handle(), &std::env::args_os().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

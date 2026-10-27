@@ -104,7 +104,7 @@
     if (at >= 0) steps[at] = step;
     else if (steps[0]?.type === 'pdfPattern' || steps[0]?.type === 'list') steps[0] = step;
     else steps.unshift(step);
-    stepView.open = 0;
+    stepView.open = Math.max(at, 0); // the step it filled; a replaced or added source step is step 1
     void close();
   }
 

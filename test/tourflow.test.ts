@@ -42,7 +42,8 @@ async function load() {
   const s = await import('../src/lib/shared/state.svelte');
   const r = await import('../src/lib/rename/session.svelte');
   const i = await import('../src/lib/shell/islandState.svelte');
-  return { ...t, data: s.data, session: r.session, addPaths: r.addPaths, send: i.send };
+  const sp = await import('../src/lib/split/session.svelte');
+  return { ...t, data: s.data, session: r.session, splitSession: sp.session, addPaths: r.addPaths, send: i.send };
 }
 
 beforeEach(() => {
@@ -66,6 +67,28 @@ describe('tour cleanup', () => {
     expect(m.tourCleanup).toHaveBeenCalledWith(DIR);
     expect(t.data.settings.tour).toBeNull();
     expect(t.tour.card).toBe('resume');
+  });
+
+  it('offers no resume over files that are already on a screen (sent from Explorer)', async () => {
+    const info = { path: 'C:\\Real\\a.pdf', size: 1, mtime: 1, ctime: 1 };
+    for (const screen of ['session', 'splitSession'] as const) {
+      const t = await load();
+      t[screen].files = [info];
+      t.data.settings.tour = { dir: DIR, batch: null, profile: null };
+      await t.tourOnStart();
+      expect(t.data.settings.tour, screen).toBeNull(); // cleaned up all the same
+      expect(t.tour.card, screen).toBeNull();
+    }
+  });
+
+  it('dismissResume closes the resume card and nothing else', async () => {
+    const t = await load();
+    t.tour.card = 'welcome';
+    t.dismissResume();
+    expect(t.tour.card).toBe('welcome');
+    t.tour.card = 'resume';
+    t.dismissResume();
+    expect(t.tour.card).toBeNull();
   });
 
   it('never removes a real batch whose id is in the marker', async () => {
