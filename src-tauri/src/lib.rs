@@ -1,4 +1,5 @@
 mod files;
+mod launch;
 mod ops;
 mod tour;
 
@@ -9,7 +10,8 @@ use tauri_plugin_window_state::StateFlags;
 pub fn run() {
     tauri::Builder::default()
         // must be first: a second launch focuses the running window instead
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            launch::push(app, &args);
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.unminimize();
                 let _ = w.show();
@@ -26,7 +28,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(launch::Pending::default())
+        .setup(|app| {
+            launch::push(app.handle(), &std::env::args().collect::<Vec<_>>());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            launch::take_launches,
             files::data_read,
             files::data_write,
             files::data_rename,

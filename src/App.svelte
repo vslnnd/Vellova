@@ -1,19 +1,22 @@
 <script lang="ts">
+  import { listen } from '@tauri-apps/api/event';
+  import { onMount } from 'svelte';
   import { PANEL_TITLES, ui } from './lib/app.svelte';
   import { undoLast } from './lib/shared/batches';
   import History from './lib/panels/History.svelte';
   import NeedsAttention from './lib/panels/NeedsAttention.svelte';
   import Profiles from './lib/panels/Profiles.svelte';
   import Settings from './lib/panels/Settings.svelte';
-  import { data } from './lib/shared/state.svelte';
+  import { ipc } from './lib/shared/ipc';
+  import { data, log } from './lib/shared/state.svelte';
   import Rename from './lib/rename/Rename.svelte';
-  import { cancelActivity as cancelRename, session as renameSession } from './lib/rename/session.svelte';
+  import { addPaths as addRename, cancelActivity as cancelRename, session as renameSession } from './lib/rename/session.svelte';
   import { cancelTarget } from './lib/shell/cancel';
   import Panel from './lib/shell/Panel.svelte';
   import { shortcut } from './lib/shell/shortcuts';
   import TitleBar from './lib/shell/TitleBar.svelte';
   import Split from './lib/split/Split.svelte';
-  import { cancelActivity as cancelSplit, session as splitSession } from './lib/split/session.svelte';
+  import { addPaths as addSplit, cancelActivity as cancelSplit, session as splitSession } from './lib/split/session.svelte';
   import Tour from './lib/tour/TourLayer.svelte'; // not Tour.svelte: on Windows it would shadow the tour.svelte(.ts) module
   import { current, tour, tourActive, undoTour } from './lib/tour/tour.svelte';
   import { restartToUpdate, scheduleUpdates } from './lib/updater';
@@ -37,6 +40,31 @@
     else if (action === 'tool-split') ui.tool = 'split';
     else undo();
   }
+
+  /** Takes what Explorer's right-click menu queued; the `launch` event only says there is more. */
+  async function takeLaunches() {
+    try {
+      const launches = await ipc.takeLaunches();
+      if (launches.length && tourActive()) {
+        log({ level: 'info', tool: 'app', message: 'Files sent from Explorer during the tour were not added.' });
+        return;
+      }
+      for (const l of launches) {
+        ui.tool = l.tool;
+        ui.panel = null;
+        await (l.tool === 'split' ? addSplit : addRename)(l.paths);
+      }
+    } catch (e) {
+      log({ level: 'error', tool: 'app', message: 'Files sent from Explorer could not be added.', detail: String(e) });
+    }
+  }
+
+  // listen first, so a launch that arrives while the queue is being taken is not missed
+  onMount(() => {
+    const off = listen('launch', () => void takeLaunches());
+    void off.then(takeLaunches);
+    return () => void off.then((f) => f());
+  });
 
   /** During the tour, Undo (Ctrl+Z or the island) touches only the tour's batch. */
   const undo = () => void (tourActive() ? undoTour() : undoLast());

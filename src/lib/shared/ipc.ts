@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import type { FileInfo, Op, Reason } from './types';
 
 export type OpResult = { i: number; ok: boolean; code?: Reason | 'cancelled'; message?: string };
+/** Files sent from Explorer's right-click menu. */
+export type Launch = { tool: 'rename' | 'split'; paths: string[] };
 export type UndoReport = { restored: number; skipped: { path: string; reason: string }[] };
 
 export const ipc = {
@@ -24,6 +26,7 @@ export const ipc = {
     invoke<string>('stage_write', bytes, { headers: { batch, n: String(n) } }),
   stageClear: (batch: string) => invoke<void>('stage_clear', { batch }),
   foldersExist: (paths: string[]) => invoke<boolean[]>('folders_exist', { paths }),
+  takeLaunches: () => invoke<Launch[]>('take_launches'),
   tourPrepare: () => invoke<string>('tour_prepare'),
   tourCleanup: (dir: string) => invoke<void>('tour_cleanup', { dir }),
 };
