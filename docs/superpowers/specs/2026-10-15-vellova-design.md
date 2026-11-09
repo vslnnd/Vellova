@@ -183,7 +183,8 @@ States and timing:
   - Open folder opens the folder of the batch's first output file in Explorer. Open file opens that file itself and is offered only when the batch made exactly one file. Archived originals are never the target, and a batch that made nothing shows neither button.
   - The Done state stays while the pointer is over the island or keyboard focus is inside it; the 4 s count starts when both end.
   - If Windows refuses to open the target, the island shows "Couldn't open" and points to History › Log, the failure is logged as a warning, and the Undo chip stays.
-- **Chips** (undo, attention, update) are 36 px circles. Hover or keyboard focus expands a chip to show its label and action, and it collapses on leave. Chips are ordered attention, undo, update.
+- **Chips** (undo, attention, update) are 36 px circles. Hover or keyboard focus expands a chip to show its label and action, and it collapses on leave. Chips are ordered attention, undo, update. The window buttons keep their place when a chip expands in a narrow window; the app name gives way.
+- **Attention** belongs to the tool whose batch raised it: only that tool's screen updates the count, and Review switches to that tool.
 - **Priority** when several states compete: working > attention > done > update.
 - **Motion:**
   - the island's width morph and content crossfade (opacity, scale 0.92→1, blur 6→0) take about 440 ms on `cubic-bezier(0.34, 1.32, 0.64, 1)`;
@@ -214,37 +215,45 @@ States and timing:
 
 ### Screens and panels
 
-- **Rename and Split** share one layout, top to bottom (which is also the keyboard order):
-  - the tool's title;
-  - the **command bar**: a card with the choices that shape the whole run, each a labelled control. It wraps onto more lines in a narrow window, so no control is ever hidden. A choice with several parts opens from the bar as a native popover, never a modal;
-  - two columns: the **left column**, which shows only what the current choice needs, and the live preview;
-  - the footer: a count ("6 files will be renamed · 1 needs attention"; "copied" or "moved" for those destinations), Undo last batch, and the main button.
+- **Rename and Split** share one layout, top to bottom (which is also the keyboard order). The island names the tool, so the screen has no title of its own.
+  - **No files yet:** the whole screen is the drop zone ("Drop files or folders here"; Split: "Drop .xlsx, .xls or .csv files") with Add files, Add folder and the profile picker. Nothing else shows. "Include subfolders when adding a folder" is in Settings.
+  - **With files:**
+    - the **command bar**: one row in a card, with the profile, the tool's main choice and an **Options** button. It fits the minimum window width without wrapping;
+    - two columns: the **left column**, which shows only what the current choice needs, and the live preview;
+    - the footer: "N need attention" when files do, and the main button, which says what it will do ("Rename 6 files", "Copy 6 files", "Move 6 files"; Split: "Create 4 files"). Undo last batch is on the island's Undo chip, on Ctrl+Z and in History.
+- **Profile** (bar and drop zone): a select, Save when a profile is loaded, and a Save as new profile icon button that opens a name field in place. The name field takes the focus; Enter saves, Esc cancels, and the focus returns to the select.
 - **Command bar, Rename:**
-  - *Profile:* a select with Save and Save as new profile.
-  - *Name from:* Text in the PDF | Click on the PDF | A list. Text in the PDF makes step 1 a Value-from-PDF step unless it already is a PDF step (a value or a pattern); A list makes it a From-a-list step unless it already is one, and focuses its Choose list… button; Click on the PDF opens the picker (disabled until a PDF is in the list). If step 1 is a source step of the other kind it is replaced; if step 1 is a modifier, the source step is inserted in front of it.
-  - *Files go:* Rename in place | Copy to… | Move to…. The last two open a popover with the folder, Choose… and the chips `{value}`, `{n}` and `{date}`.
-  - *If taken:* Add (1) | Skip | Replace (Recycle Bin).
-  - *Matching files:* Rename too | Leave alone.
-  - *Reset.*
+  - *Profile.*
+  - *Name from:* PDF text | A list. PDF text makes step 1 a Value-from-PDF step unless it already is a PDF step (a value or a pattern); A list makes it a From-a-list step unless it already is one, and focuses its Choose list… button. If step 1 is a source step of the other kind it is replaced; if step 1 is a modifier, the source step is inserted in front of it.
+  - *Options* (a popover, one line per setting):
+    - *Files go:* Rename in place | Copy to | Move to. The last two add the folder, Choose… and "Sort into folders by" Value, Number and Date, which add `{value}`, `{n}` and `{date}` to the folder.
+    - *If taken:* Add (1) | Skip | Replace (to the Recycle Bin).
+    - *Matching files:* Rename too | Leave alone.
+    - *Reset.*
 - **Command bar, Split:**
   - *Profile.*
   - *Split by:* Value | People | Rows | Parts | Sheets.
-  - *Sheet:* only when the first file has several sheets and the mode is not Sheets.
-  - *Header:* Row 1 | Manual…, hidden in Sheets mode. Manual… opens the grid of the file's first rows, and the button then reads "Row N".
-  - *Save to:* the folder (with favourites and Choose…), the format (Same type | .xlsx | .csv) and "If taken" (add (1) | skip | replace), each in its own popover.
-  - *Reset.*
+  - *Options:*
+    - *Sheet:* only when the first file has several sheets and the mode is not Sheets.
+    - *Header:* Row 1 | Choose…, hidden in Sheets mode. Choose… opens the grid of the file's first rows, and the button then reads "Row N".
+    - *Save to:* the folder, with favourites and Choose….
+    - *Format:* Same type | .xlsx | .csv.
+    - *If taken:* Add (1) | Skip | Replace.
+    - *File names:* the template, with its pieces as buttons that add them.
+    - *Subfolder per group* (By value, and People with one file per person) and *Archive originals*.
+    - *Reset.*
+- The **Options** button shows a dot when any setting under it is not the default.
 - **Reset** puts the rules back to the loaded profile (to the defaults when no profile is loaded), returns the left column to its summary and clears the file list. It is unavailable while a batch runs.
-- **Left column, Rename:** "New name" as numbered steps.
-  - Each step shows a one-line title of what it does, for example `Text after "Invoice No.:"`. A click opens its editor; one editor is open at a time. Arrows move a step up or down, and a cross removes it.
-  - "+ Add a step" opens a menu: Add text, Replace, Remove, Trim spaces, Change case, Numbering, Date, Pattern from PDF, Value from PDF, From a list.
-  - An Example sits at the bottom: the first ready PDF's new name with the found value marked.
+- **Left column, Rename:** an Example on top (the first ready PDF's new name with the found value marked; nothing until a PDF has one), then "New name" as numbered steps.
+  - Each step shows a one-line title of what it does, for example `Text after "Invoice No.:"`. A click opens its editor; one editor is open at a time. Arrows move a step up or down, and a cross removes it; the three show while the step is pointed at or holds the focus.
+  - A Value-from-PDF step shows Keyword, with the Click on the PDF button beside it, and Position (After, Before, Below, Above on one line). Match number shows once it is not 1, or while the step is pointed at or holds the focus.
+  - "+ Add step" opens a menu: Add text, Replace, Remove, Trim spaces, Change case, Numbering, Date, Pattern from PDF, Value from PDF, From a list.
 - **Left column, Split:** the chosen mode's own fields under its title.
-  - Split by value: the column, the values table (value, label, payable), a paste area for rows from Excel, and Keep non-matching rows.
-  - Split among people: the names with weights, Even blocks | Keep groups together (with its group column), One file per person | Assigned to column, and Summary.
+  - Split by value: the column and the values table (value, label, payable), whose headings always show; "+ Add value"; a one-line paste field for rows from Excel; and Keep non-matching rows. Choosing a column while the table is empty fills it with the column's distinct values (up to 200), all payable, so the first preview is not empty.
+  - Split among people: the names, each with its share; Rows: Even blocks | Keep groups together (with its group column); Output: One file per person | Assigned to column; and Summary.
   - Rows per file and Equal parts: one number. One file per sheet: nothing more.
-  - Rare options sit in two closed disclosures at the bottom, each showing its current value on its summary line: *File names* (the template) and *Subfolders and archive*.
-- **Summary mode:** with a saved profile loaded and not edited, the left column shows a card with the profile's name and one line per setting (a label and its value), each with a Change link, plus an Edit button. Rename has one "New name" line per step, then Files go, If taken and Matching files. Split has Split by, Header, Save to, File names, Subfolders and Archive; a setting the mode doesn't use has no line. Change opens the editor and focuses that setting, opening its disclosure if it is in one; Edit opens the editor. Edit, Change or any change to the rules shows the editor; loading a profile or Reset brings the summary back. Without a profile the editor shows. The card holds no sentence or other explanatory text.
-- **Empty state:** a large drop zone, "Drop files or folders here", with Add files / Add folder and an "Include subfolders" toggle.
+- **Preview, Rename:** one line per file under the headings Now and New name: the current name, the new name (editable) with its extension right after it, and a status. A file that needs attention says why on its status ("Keyword not found"); the full sentence is its tooltip and is in Needs attention. Skip and Remove show for the row that is pointed at or holds the focus. What every waiting file waits for ("Enter a keyword to find the value.") is said once, beside the file count, in both tools.
+- **Summary mode:** with a saved profile loaded and not edited, the left column shows a card with the profile's name and one line per setting (a label and its value), each with a Change link, plus an Edit button. Rename has one "New name" line per step, then Files go, If taken and Matching files. Split has Split by, Header, Save to, File names, Subfolders and Archive; a setting the mode doesn't use has no line. Change opens the editor and focuses that setting, opening Options if it is there; Edit opens the editor. Edit, Change or any change to the rules shows the editor; loading a profile or Reset brings the summary back. Without a profile the editor shows. The card holds no sentence or other explanatory text.
 - **Panels** slide in from the right over the current tool. Esc closes them, and the tool keeps its state underneath.
   - **History**, with two tabs:
     - *Batches:* both tools, filterable. Each batch offers Undo, Re-run (Split, while sources exist), Export report and Show files. Export report saves an .xlsx (default) or a .csv with one row per file under the headings Date, Old path, New path and Result (Done, Archived, Not finished, or the failure's reason). The date is the batch's time. The .csv is UTF-8 with a byte-order mark, so Excel reads it correctly.
@@ -291,7 +300,8 @@ A Rename setup is an ordered list of **steps**. Each step runs on a file's **bas
 | Numbering | Adds a number, start + position × step, zero-padded to the digit count. The position is the PDF's place among the PDFs in the list as shown. The number is also `{n}`. | Start 1; step 1; 3 digits; at the end; separator `_` |
 | Date | Adds a date: today, the file's date modified or its date created, in local time. The format uses `yyyy`, `yy`, `MM`, `dd`, `HH` and `mm`; other characters stay as typed. The date is also `{date}`. | Today; `yyyy-MM-dd`; at the start; separator `_` |
 
-**Click on the PDF** is not a step. It is a picker for Value-from-PDF, opened from "Name from" on the bar (it shows the first PDF) or from Needs attention for a file whose keyword was not found:
+**Click on the PDF** is not a step. It is a picker for Value-from-PDF, opened from the button beside the Keyword field or from Needs attention for a file whose keyword was not found. From the button it shows the first PDF that is not known to be unreadable or a scan; a file that cannot be opened is passed over for the next one, and previous and next file buttons move through the list's PDFs. The picker takes the place of both columns: the page, drawn to fit the height, with what the click proposes beside it.
+
 
 1. The PDF's page is drawn by pdf.js in the worker, with previous and next buttons for more pages.
 2. Words are shown as hoverable boxes; click the value.
@@ -495,6 +505,7 @@ One spec, three milestones, each with its own implementation plan and each relea
    - Click value on PDF, Pattern from PDF, From a list, all modifier steps.
    - Sort into folders, report export, Explorer right-click.
    - The command bar and focused left column on both screens, profile summaries, Reset, and the Done island's Open folder and Open file.
+   - Simplified layout (2026-11-09): only the drop zone and the profile while there are no files, a one-row bar with Options, one line per file, and the values table filled from the chosen column.
 
 ## Out of scope (possible later)
 
