@@ -46,6 +46,13 @@ describe('by value', () => {
   it('omits NON_MATCHING when off', () => {
     expect(run(rules(), { [Q]: simple })).toHaveLength(2);
   });
+  it('a file with its own header row is read from that row; the others keep the rules\' row', () => {
+    const titled: Grid = { ...simple, rows: [['Report'], ...simple.rows] };
+    const r = rules();
+    expect(run(r, { [Q]: titled })[0]).toMatchObject({ status: 'attention', reason: 'no-column' });
+    expect(run(r, { [Q]: titled }, { headerFor: { [Q]: 2 } })[0]).toMatchObject({ status: 'ready' });
+  });
+
   it('missing column and columnFor', () => {
     const r = rules({ column: 'Cost centre' });
     const g = grid([['Name', 'Dept'], ['a', 'A']]);

@@ -2,7 +2,7 @@ import { extOf, join, sanitize, splitExt, splitPath } from '../../shared/names';
 import type { PlanItem, Reason, SplitMode, SplitRules, Status } from '../../shared/types';
 import { pathKey } from '../../rename/engine/files';
 import type { Grid } from './grid';
-import { findColumn, headerInfo } from './header';
+import { findColumn, headerInfo, headerOf } from './header';
 import { byValue, equalParts, evenBlocks, fixedRows, keepGroups } from './modes';
 
 export { DEFAULT_SPLIT_RULES, splitProfile } from './profile';
@@ -17,6 +17,8 @@ export type FileRead = { ok: true; grid: Grid } | { ok: false; reason: Reason; d
 export type SplitPlanInput = {
   files: string[]; reads: Record<string, FileRead | undefined>; rules: SplitRules;
   columnFor: Record<string, string>; skipped: Set<string>;
+  /** per file: its own header row (1-based), chosen from the file's row in the list */
+  headerFor?: Record<string, number>;
   /** pathKeys of every file in every folder the plan can write to: the source folders or the chosen one, plus each subfolder it would use. */
   existing: Set<string>; date: Date;
 };
@@ -106,7 +108,7 @@ export function planSplit(input: SplitPlanInput): SplitItem[] {
       drafts = grid.sheets.filter((s) => s.rows > 0).map((s) => ({ rows: s.rows, spec: { kind: 'sheet', sheet: s.name }, template: tpl, vars: { sheet: s.name } }));
       if (!drafts.length) return [fileItem(source, 'skipped', { detail: 'No data rows.' })];
     } else {
-      const head = headerInfo(grid, rules.header);
+      const head = headerInfo(grid, headerOf(rules.header, input.headerFor?.[source]));
       const data = head.data;
       if (!data.length) return [fileItem(source, 'skipped', { detail: 'No data rows.' })];
       const needsColumn = rules.mode === 'value' || (rules.mode === 'people' && rules.assign === 'groups');

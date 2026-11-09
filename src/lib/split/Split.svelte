@@ -14,7 +14,8 @@
   import SplitSettings from './SplitSettings.svelte';
 
   let dragging = $state(false);
-  let picker = $state({ open: false, file: '' });
+  /** `only`: opened from a file's row, so the row chosen is that file's alone */
+  let picker = $state({ open: false, file: '', only: false });
 
   // the last grid read for each file: a re-read clears session.reads, and the screen keeps showing the old grid until the new one lands
   const memo = new Map<string, Grid>();
@@ -38,7 +39,7 @@
   // (with subfolders on, the rules that name them as well); other rules only re-plan
   $effect(() => {
     const r = session.rules;
-    JSON.stringify([session.files, r.sheet, r.header, r.mode, r.column, session.columnFor, r.folder, r.subfolder && [r.params, r.people, r.nonMatching, r.peopleOutput, r.assign]]);
+    JSON.stringify([session.files, r.sheet, r.header, session.headerFor, r.mode, r.column, session.columnFor, r.folder, r.subfolder && [r.params, r.people, r.nonMatching, r.peopleOutput, r.assign]]);
     invalidate();
     const t = setTimeout(() => void refresh(), 150);
     return () => clearTimeout(t);
@@ -63,10 +64,10 @@
     return () => void off.then((f) => f());
   });
 
-  /** Switches the header to Manual (keeping a manual row) and opens the picker on `file`. */
-  function choose(file = session.files[0]?.path ?? '') {
-    if (session.rules.header.mode !== 'manual') session.rules.header = { mode: 'manual', row: 1 };
-    picker = { open: true, file };
+  /** From Options: the header row of every file (switches to a chosen row). From a file's row in the list: that file's only. */
+  function choose(file?: string) {
+    if (!file && session.rules.header.mode !== 'manual') session.rules.header = { mode: 'manual', row: 1 };
+    picker = { open: true, file: file ?? session.files[0]?.path ?? '', only: !!file };
   }
 </script>
 
@@ -77,7 +78,7 @@
       <ProfileBar id="sp-profile" profiles={data.profiles.split} current={session.profileId} onpick={pickProfile} onsave={saveProfile} />
     </DropZone>
   {:else}
-    <SplitBar {grids} onpick={choose} />
+    <SplitBar {grids} onpick={() => choose()} />
     <div class="cols">
       <SplitSettings {grids} />
       <div class="right"><SplitPreview {grids} onpick={choose} /></div>
@@ -93,7 +94,7 @@
     </footer>
   {/if}
   {#if dragging}<div class="drop" aria-hidden="true">Drop to add</div>{/if}
-  <HeaderPicker bind:open={picker.open} bind:file={picker.file} {grids} />
+  <HeaderPicker bind:open={picker.open} bind:file={picker.file} only={picker.only} {grids} />
 </section>
 
 <style>

@@ -4,7 +4,7 @@
   import { PDF } from '../rename/engine/files';
   import * as rename from '../rename/session.svelte';
   import { REASONS } from '../shared/reasons';
-  import { columnNames } from '../split/engine/header';
+  import { columnNames, headerOf } from '../split/engine/header';
   import * as split from '../split/session.svelte';
   import { extOf, splitPath } from '../shared/names';
   import type { PlanItem, Reason } from '../shared/types';
@@ -34,7 +34,7 @@
   /** The column names of a split file, for "Choose column for this file". */
   const columns = (path: string) => {
     const r = split.session.reads[path];
-    return r?.ok ? columnNames(r.grid, split.session.rules.header) : [];
+    return r?.ok ? columnNames(r.grid, headerOf(split.session.rules.header, split.session.headerFor[path])) : [];
   };
   const name = (p: string) => splitPath(p).name;
 

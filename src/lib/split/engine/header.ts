@@ -12,6 +12,9 @@ export const colLetter = (index: number): string => {
 
 const norm = (s: string) => s.trim().toLowerCase();
 
+/** The header a file is read with: its own row when one was chosen for it, else the rules' header. */
+export const headerOf = (header: SplitRules['header'], row?: number): SplitRules['header'] => (row ? { mode: 'manual', row } : header);
+
 export function findColumn(columns: Column[], name: string): Column | undefined {
   return columns.find((c) => norm(c.name) === norm(name));
 }

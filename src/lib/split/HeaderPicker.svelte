@@ -4,21 +4,26 @@
   import { colLetter } from './engine/header';
   import { session } from './session.svelte';
 
-  let { open = $bindable(), file = $bindable(), grids }: { open: boolean; file: string; grids: Record<string, Grid> } = $props();
+  /** `only`: the row is chosen for `file` alone, not for every file in the list */
+  let { open = $bindable(), file = $bindable(), only = false, grids }: { open: boolean; file: string; only?: boolean; grids: Record<string, Grid> } = $props();
 
   let dialog: HTMLDialogElement;
   const path = $derived(session.files.some((f) => f.path === file) ? file : (session.files[0]?.path ?? ''));
   const grid = $derived(grids[path]);
   const rows = $derived(grid?.rows.slice(0, 15) ?? []);
   const width = $derived(Math.max(1, ...rows.map((r) => r.length)));
-  const chosen = $derived(session.rules.header.mode === 'manual' ? session.rules.header.row : 1);
+  const shared = $derived(session.rules.header.mode === 'manual' ? session.rules.header.row : 1);
+  const chosen = $derived(only ? (session.headerFor[path] ?? shared) : shared);
 
   $effect(() => {
     if (open && !dialog.open) dialog.showModal();
     else if (!open && dialog.open) dialog.close();
   });
 
-  const pick = (i: number) => (session.rules.header = { mode: 'manual', row: i + 1 });
+  function pick(i: number) {
+    if (only) session.headerFor[path] = i + 1;
+    else session.rules.header = { mode: 'manual', row: i + 1 };
+  }
   function onkey(e: KeyboardEvent, i: number) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     e.preventDefault();
@@ -29,10 +34,11 @@
 <dialog bind:this={dialog} class="card" aria-labelledby="hp-title" onclose={() => (open = false)}>
   <div class="row">
     <h2 id="hp-title">Choose the header row</h2>
+    {#if only}<span class="mono only" title={path}>{splitPath(path).name}</span>{/if}
     <span class="grow"></span>
     <button class="btn small primary" onclick={() => (open = false)}>Done</button>
   </div>
-  {#if session.files.length > 1}
+  {#if session.files.length > 1 && !only}
     <select class="field" aria-label="File" value={path} onchange={(e) => (file = e.currentTarget.value)}>
       {#each session.files as f (f.path)}<option value={f.path}>{splitPath(f.path).name}</option>{/each}
     </select>
@@ -64,6 +70,7 @@
   dialog:not([open]) { display: none; }
   dialog::backdrop { background: var(--veil); }
   .grow { flex: 1; }
+  .only { font-size: 13px; color: var(--text2); }
   .scroll { overflow: auto; min-height: 0; border: 1px solid var(--border); border-radius: 6px; }
   .pad { padding: 12px; }
   table { border-collapse: collapse; font-size: 12px; }

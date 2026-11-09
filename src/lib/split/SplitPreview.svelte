@@ -2,7 +2,7 @@
   import { splitPath } from '../shared/names';
   import type { Status } from '../shared/types';
   import type { Grid } from './engine/grid';
-  import { headerInfo } from './engine/header';
+  import { headerInfo, headerOf } from './engine/header';
   import type { SplitItem } from './engine/planner';
   import { clearFiles, pickFiles, pickFolder, plan, refresh, removeFile, session, skip } from './session.svelte';
 
@@ -27,7 +27,9 @@
       return { path: f.path, notes: its.filter((i) => i.id === i.source || i.id.startsWith('archive:')), outs: its.filter((i) => i.id !== i.source && !i.id.startsWith('archive:')) };
     }),
   );
-  const warnings = (path: string) => (grids[path] && session.rules.mode !== 'sheets' ? headerInfo(grids[path], session.rules.header).warnings : []);
+  /** the header a file is read with: its own row when one was chosen for it */
+  const headerFor = (path: string) => headerOf(session.rules.header, session.headerFor[path]);
+  const warnings = (path: string) => (grids[path] && session.rules.mode !== 'sheets' ? headerInfo(grids[path], headerFor(path)).warnings : []);
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   /** What every waiting file waits for, said once above the list instead of under each file. */
   const waiting = $derived.by(() => {
@@ -45,7 +47,7 @@
       if (spec.sheet !== g.sheet) return { head: [], rows: [], note: 'Only the selected sheet is read for the preview.' };
       return { head: g.rows[0] ?? [], rows: g.rows.slice(1, 21) };
     }
-    const head = g.rows[headerInfo(g, session.rules.header).row] ?? [];
+    const head = g.rows[headerInfo(g, headerFor(it.source)).row] ?? [];
     const picked = spec.rows.slice(0, 20).map((r) => g.rows[r]);
     const width = Math.max(head.length, ...picked.map((r) => r.length));
     const pad = (r: string[]) => [...r, ...Array(width - r.length).fill('')];

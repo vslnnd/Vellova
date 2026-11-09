@@ -27,6 +27,8 @@ export const session = $state({
   reads: {} as Record<string, FileRead>,
   /** per file: the column to split by when its header differs (Needs attention) */
   columnFor: {} as Record<string, string>,
+  /** per file: its own header row (1-based), chosen from the file's row in the list */
+  headerFor: {} as Record<string, number>,
   /** item ids: a file's id is its path, an output's `<path>|<n>`, a failed archive's `archive:<path>` */
   skipped: [] as string[],
   /** by item id: outputs that failed to be written, archives that failed to move */
@@ -54,6 +56,7 @@ const all = $derived.by(() => {
     reads: session.reads,
     rules: session.rules,
     columnFor: session.columnFor,
+    headerFor: session.headerFor,
     skipped,
     existing: new Set(session.existing),
     date: new Date(),
@@ -71,7 +74,7 @@ const batchLive = () => {
   return !!b && !b.undone;
 };
 /** What decides an output's id and content: a change re-plans, so earlier `done` ids no longer describe these outputs. */
-const planKey = (batch: string | null) => JSON.stringify([batch, session.rules, session.columnFor]);
+const planKey = (batch: string | null) => JSON.stringify([batch, session.rules, session.columnFor, session.headerFor]);
 const liveDone = $derived(batchLive() && session.doneKey === planKey(session.batch) ? new Set(session.done) : new Set<string>());
 
 const items = $derived.by(() => {
@@ -177,7 +180,7 @@ export async function refresh() {
     if (rules.subfolder) {
       // the subfolders the plan would write to; one that doesn't exist yet lists as empty
       const base = new Set(dirs.map(pathKey));
-      const outs = planSplit({ files: files.map((f) => f.path), reads, rules, columnFor: $state.snapshot(session.columnFor), skipped: new Set(), existing: keys, date: new Date() });
+      const outs = planSplit({ files: files.map((f) => f.path), reads, rules, columnFor: $state.snapshot(session.columnFor), headerFor: $state.snapshot(session.headerFor), skipped: new Set(), existing: keys, date: new Date() });
       const subs = [...new Set(outs.flatMap((i) => (i.op ? [splitPath(i.op.to).dir] : [])))].filter((d) => !base.has(pathKey(d)));
       for (const p of await listed(subs)) keys.add(pathKey(p));
       if (stale()) return;
@@ -233,6 +236,7 @@ function forget(paths: string[]) {
   for (const id of Object.keys(session.failures)) if (!keep(id)) delete session.failures[id];
   for (const p of paths) {
     delete session.columnFor[p];
+    delete session.headerFor[p];
     delete session.reads[p];
     evict(p);
   }
@@ -385,7 +389,8 @@ export async function runBatch(only?: string[]) {
           if (now && (now.size !== f.size || now.mtime !== f.mtime)) throw { reason: 'internal', detail: CHANGED, hint: CHANGED };
           const bytes = await ipc.readFile(source).catch((e) => Promise.reject(ipcReason(e)));
           const grid = read?.ok ? read.grid : undefined;
-          const header = session.rules.header.mode === 'manual' ? session.rules.header.row - 1 : 0;
+          const own = session.headerFor[source];
+          const header = own ? own - 1 : session.rules.header.mode === 'manual' ? session.rules.header.row - 1 : 0;
           parts = await writeFile(keyOf(f), extOf(source), bytes, {
             sheet: session.rules.sheet, header, format: outs[0].format ?? 'xlsx', delimiter: grid?.delimiter ?? ',', outputs: outs.map((o) => o.spec!),
           }).catch((e) => Promise.reject({ reason: (e as { internal?: boolean })?.internal ? 'internal' : 'unreadable', detail: String((e as Error)?.message ?? e) }));
