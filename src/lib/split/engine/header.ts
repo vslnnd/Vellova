@@ -21,6 +21,22 @@ export const columnNames = (grid: Grid, header: SplitRules['header']): string[] 
   ...new Set(headerInfo(grid, header).columns.map((c) => c.name).filter((n) => n.trim())),
 ];
 
+/** The distinct non-empty values of a column in sheet order (trimmed; case is ignored when comparing), at most `cap`. */
+export function distinctValues(grid: Grid, header: SplitRules['header'], name: string, cap = 200): string[] {
+  const info = headerInfo(grid, header);
+  const col = findColumn(info.columns, name);
+  if (!col) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const i of info.data) {
+    const v = (grid.rows[i][col.index] ?? '').trim();
+    if (!v || seen.has(norm(v))) continue;
+    seen.add(norm(v));
+    if (out.push(v) === cap) break;
+  }
+  return out;
+}
+
 export function headerInfo(grid: Grid, header: SplitRules['header']): HeaderInfo {
   const row = header.mode === 'manual' ? header.row - 1 : 0;
   const n = row + 1;
