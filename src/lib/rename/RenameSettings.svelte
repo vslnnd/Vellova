@@ -33,7 +33,9 @@
     session.editing = true;
     if (key.startsWith('step-')) stepView.open = Number(key.slice(5));
     await tick();
-    document.querySelector<HTMLElement>(`[data-part="${key}"]`)?.focus();
+    const el = document.querySelector<HTMLElement>(`[data-part="${key}"]`);
+    el?.closest<HTMLElement>('[popover]')?.showPopover(); // Files go, If taken and Matching files are under Options
+    el?.focus();
   }
 
   function move(i: number, by: number) {
@@ -53,13 +55,10 @@
     addMenu?.hidePopover();
   }
 
-  // the first ready PDF's new name, its value marked; else the first PDF's name as it is
+  // the first ready PDF's new name, its value marked
   const example = $derived.by(() => {
     const it = plan.items.find((i) => i.status === 'ready' && extOf(i.source) === '.pdf' && i.name);
-    if (!it) {
-      const f = session.files.find((x) => extOf(x.path) === '.pdf');
-      return f ? { before: splitPath(f.path).name, value: '', after: '' } : null;
-    }
+    if (!it) return null;
     const name = it.name!;
     const n = session.names[it.source];
     const v = n?.ok && n.value ? n.value : '';
@@ -69,6 +68,12 @@
 </script>
 
 <div class="settings">
+  {#if example}
+    <div class="example">
+      <span class="label">Example</span>
+      <span class="mono">{example.before}<span class="v">{example.value}</span>{example.after}</span>
+    </div>
+  {/if}
   {#if profile && !edited.value && !session.editing}
     <SummaryCard title={profile.name} summary={renameSummary(session.rules)} onchange={(k) => void change(k)} onedit={() => (session.editing = true)} />
   {:else}
@@ -94,22 +99,16 @@
           </li>
         {/each}
       </ol>
-      <button class="link" popovertarget="rn-add" style="anchor-name: --rn-add">+ Add a step: text, numbers, date, replace, case</button>
+      <button class="link" popovertarget="rn-add" style="anchor-name: --rn-add">+ Add step</button>
       <div class="pop menu" id="rn-add" popover bind:this={addMenu} style="position-anchor: --rn-add">
         {#each ADD as [type, label] (type)}<button onclick={() => add(type)}>{label}</button>{/each}
       </div>
     </div>
   {/if}
-  {#if example}
-    <div class="example">
-      <span class="label">Example</span>
-      <span class="mono">{example.before}<span class="v">{example.value}</span>{example.after}</span>
-    </div>
-  {/if}
 </div>
 
 <style>
-  .settings { flex: 0 0 300px; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 0 2px 12px; }
+  .settings { flex: 0 0 clamp(300px, 28vw, 360px); min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 0 2px 12px; }
   ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
   .step { display: flex; flex-direction: column; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border); }
   .head { display: flex; align-items: center; gap: 2px; padding: 4px 4px 4px 10px; }
@@ -122,11 +121,14 @@
     font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .ib.sm { width: 26px; height: 26px; }
-  .ib:disabled { opacity: 0.35; cursor: default; }
+  /* move and remove stay out of the way until the step is pointed at or holds the focus */
+  .head .ib { opacity: 0; }
+  .step:hover .head .ib, .step:focus-within .head .ib { opacity: 1; }
+  .step:hover .head .ib:disabled, .step:focus-within .head .ib:disabled { opacity: 0.35; cursor: default; }
   .body { display: flex; flex-direction: column; gap: 8px; padding: 4px 12px 12px; }
   .link { align-self: flex-start; padding: 2px 0; border: 0; background: none; color: var(--accent); font-size: 12.5px; text-align: left; }
   .link:hover { text-decoration: underline; }
-  .example { flex: none; margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
+  .example { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
   .example .mono { font-size: 13px; overflow-wrap: anywhere; }
   .v { color: var(--accent); }
 </style>

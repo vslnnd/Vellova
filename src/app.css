@@ -45,6 +45,7 @@ h2 { font-size: 16px; } h3 { font-size: 13px; }
 .inline { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--text2); }
 
 .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   height: 32px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--border2); background: var(--surface);
   white-space: nowrap; transition: background 160ms ease, border-color 160ms ease, transform 160ms var(--press);
 }
@@ -53,6 +54,7 @@ h2 { font-size: 16px; } h3 { font-size: 13px; }
 .btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 600; }
 .btn.primary:hover { filter: brightness(1.08); }
 .btn.small { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.btn.icon { width: 32px; padding: 0; flex: none; }
 .btn:disabled { opacity: 0.5; cursor: default; transform: none; filter: none; }
 .field { height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border2); background: var(--bg); width: 100%; }
 .field:focus { border-color: var(--accent); outline: none; }
@@ -92,6 +94,14 @@ h2 { font-size: 16px; } h3 { font-size: 13px; }
 }
 .pop:popover-open { display: flex; }
 @supports not (position-area: bottom) { .pop { inset: 0; margin: auto; } }
+/* the Options popover of a command bar: one line per setting, its label left and its control right */
+.opts { width: 440px; padding: 4px 14px; gap: 0; position-area: bottom span-left; }
+.opts .line { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; min-height: 46px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.opts .line:last-child { border-bottom: 0; }
+.opts .line > .label { font-size: 13px; }
+.opts .wide { flex-basis: 100%; }
+/* on the Options button: something in there is not the default */
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .menu { padding: 4px; gap: 0; min-width: 180px; }
 .menu button { height: 30px; padding: 0 10px; border: 0; border-radius: 6px; background: none; text-align: left; font-size: 13px; }
 .menu button:hover, .menu button:focus-visible { background: var(--hover); }

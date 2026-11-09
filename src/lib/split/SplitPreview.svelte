@@ -29,6 +29,11 @@
   );
   const warnings = (path: string) => (grids[path] && session.rules.mode !== 'sheets' ? headerInfo(grids[path], session.rules.header).warnings : []);
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  /** What every waiting file waits for, said once above the list instead of under each file. */
+  const waiting = $derived.by(() => {
+    const p = plan.items.filter((i) => i.status === 'pending' && i.detail);
+    return p.length && p.every((i) => i.detail === p[0].detail) ? p[0].detail! : '';
+  });
 
   /** The first 20 rows of an output, as the preview table shows them. */
   function sample(it: SplitItem): { head: string[]; rows: string[][]; note?: string } {
@@ -53,10 +58,12 @@
   <div class="row head">
     <h3>{plural(session.files.length, 'file', 'files')}</h3>
     {#if session.loading}
-      <span class="hint">reading…</span>
+      <span class="status" role="status">Reading…</span>
     {:else if session.dirty}
-      <span class="hint">Not fully read</span>
+      <span class="status" role="status">Not fully read</span>
       <button class="btn small" onclick={() => void refresh()}>Read again</button>
+    {:else if waiting}
+      <span class="status" role="status">{waiting}</span>
     {/if}
     <span class="grow"></span>
     <button class="btn small" onclick={() => void pickFiles()}>Add files</button>
@@ -85,7 +92,7 @@
           </button>
         </div>
         {#each g.notes as n (n.id)}
-          {#if n.detail}<p class="why" class:err={n.status === 'attention'}>{n.id.startsWith('archive:') ? `Archive: ${n.detail}` : n.detail}</p>{/if}
+          {#if n.detail && !(waiting && n.status === 'pending')}<p class="why" class:err={n.status === 'attention'}>{n.id.startsWith('archive:') ? `Archive: ${n.detail}` : n.detail}</p>{/if}
         {/each}
         {#each warnings(g.path) as w (w)}
           <div class="banner">
@@ -135,7 +142,8 @@
 
 <style>
   .preview { flex: 1; min-height: 0; padding: 0; gap: 0; }
-  .head { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .head { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .status { font-size: 12.5px; color: var(--text2); }
   .grow { flex: 1; }
   .list { overflow: auto; flex: 1; padding: 4px 0; }
   .src { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--border); }

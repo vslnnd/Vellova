@@ -4,6 +4,7 @@
   import { extOf, splitPath } from '../shared/names';
   import type { Position, Step } from '../shared/types';
   import { readGrid } from '../split/sheets';
+  import { PDF } from './engine/files';
   import { listKey, patternError } from './engine/steps';
   import { listReadError, refresh, session } from './session.svelte';
 
@@ -51,6 +52,18 @@
     void refresh();
   }
 
+  /** The PDF that Click on the PDF opens: the first one that isn't known to be unreadable or a scan. */
+  const pickable = $derived.by(() => {
+    const pdfs = session.files.filter((f) => extOf(f.path) === PDF);
+    const bad = (p: string) => {
+      const n = session.names[p];
+      return !!n && !n.ok && (n.reason === 'unreadable' || n.reason === 'no-text');
+    };
+    return (pdfs.find((f) => !bad(f.path)) ?? pdfs[0])?.path;
+  });
+  /** the picker fills the first Value-from-PDF step, so that one carries its button's focus target */
+  const firstValue = $derived(session.rules.steps.find((x) => x.type === 'pdfValue') === s);
+
   function setInsert(text: string) {
     if (s.type !== 'addText') return;
     if (text) s.insert = { text, at: s.insert?.at ?? 0 };
@@ -60,14 +73,19 @@
 
 {#if s.type === 'pdfValue'}
   <label class="label" for="{uid}-kw">Keyword</label>
-  <input id="{uid}-kw" data-tour={first ? 'keyword' : undefined} class="field mono" placeholder="Invoice No.:" spellcheck="false" bind:value={s.keyword} />
-  <span class="label" id="{uid}-pos">The value is … the keyword</span>
-  <div class="seg" role="group" aria-labelledby="{uid}-pos" data-tour={first ? 'position' : undefined}>
+  <div class="kw">
+    <input id="{uid}-kw" data-tour={first ? 'keyword' : undefined} class="field mono" placeholder="Invoice No.:" spellcheck="false" bind:value={s.keyword} />
+    <button class="ib" data-part={firstValue ? 'pick' : undefined} disabled={!pickable} aria-label="Click on the PDF" title={pickable ? 'Click on the PDF' : 'Add a PDF first'} onclick={() => (session.picking = pickable!)}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>
+    </button>
+  </div>
+  <span class="label" id="{uid}-pos">Position</span>
+  <div class="seg four" role="group" aria-labelledby="{uid}-pos" data-tour={first ? 'position' : undefined}>
     {#each POSITIONS as [v, label] (v)}
       <button aria-pressed={s.position === v} onclick={() => s.type === 'pdfValue' && (s.position = v)}>{label}</button>
     {/each}
   </div>
-  <label class="inline">Use match number <input class="field num" type="number" min="1" max="99" bind:value={s.occurrence} /></label>
+  <label class="inline more" class:set={s.occurrence !== 1}>Match number <input class="field num" type="number" min="1" max="99" bind:value={s.occurrence} /></label>
 {:else if s.type === 'pdfPattern'}
   <label class="label" for="{uid}-pre">Find</label>
   <select id="{uid}-pre" class="field" bind:value={s.preset}>
@@ -188,4 +206,12 @@
   .file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text2); }
   .err { margin: 0; flex: 1; min-width: 0; font-size: 12px; color: var(--errink); }
   .seg { align-self: flex-start; flex-wrap: wrap; }
+  .seg.four { align-self: stretch; display: grid; grid-template-columns: repeat(4, 1fr); }
+  .seg.four button { padding: 0; }
+  .kw { display: flex; align-items: center; gap: 4px; }
+  .kw .ib { color: var(--accent); }
+  .kw .ib:disabled { opacity: 0.35; cursor: default; }
+  /* which match to use is rarely changed: shown once it is, or while the step is pointed at or holds the focus */
+  .more { display: none; }
+  .more.set, :global(.step:hover) .more, :global(.step:focus-within) .more { display: inline-flex; }
 </style>

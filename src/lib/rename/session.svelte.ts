@@ -487,6 +487,13 @@ export function useProfile(p: RenameProfile) {
   session.editing = false;
 }
 
+/** The profile list's choice: that profile's rules, or no profile (the rules stay). */
+export function pickProfile(id: string | null) {
+  const p = data.profiles.rename.find((x) => x.id === id);
+  if (p) useProfile(p);
+  else session.profileId = null;
+}
+
 const loaded = () => data.profiles.rename.find((p) => p.id === session.profileId);
 
 /** Rules back to the loaded profile (else the defaults) and an empty file list. Not while a batch runs. */

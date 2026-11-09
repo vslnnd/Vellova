@@ -1,32 +1,26 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { extOf } from '../shared/names';
   import { data } from '../shared/state.svelte';
   import ProfileBar from '../shared/ProfileBar.svelte';
-  import type { Step } from '../shared/types';
+  import type { Conflict, Step } from '../shared/types';
   import { island } from '../shell/islandState.svelte';
-  import { PDF } from './engine/files';
   import { NEW_STEP } from './engine/steps';
   import { stepView } from './RenameSettings.svelte';
-  import { pickCopyFolder, reset, saveProfile, session, useProfile } from './session.svelte';
+  import { pickCopyFolder, pickProfile, reset, saveProfile, session } from './session.svelte';
 
-  const DEST = { inplace: 'Rename in place', copy: 'Copy to…', move: 'Move to…' } as const;
+  const DEST = { inplace: 'Rename in place', copy: 'Copy to', move: 'Move to' } as const;
+  const CONFLICTS: [Conflict, string, string?][] = [['add', 'Add (1)'], ['skip', 'Skip'], ['replace', 'Replace', 'The file that is there goes to the Recycle Bin']];
   const SOURCES: Step['type'][] = ['pdfValue', 'pdfPattern', 'list'];
-  const TOKENS = ['{value}', '{n}', '{date}'];
+  const TOKENS = [['{value}', 'Value'], ['{n}', 'Number'], ['{date}', 'Date']];
 
   const rules = $derived(session.rules);
   const dest = $derived(rules.destination);
-  const firstPdf = $derived(session.files.find((f) => extOf(f.path) === PDF)?.path);
-
-  function pick(id: string | null) {
-    const p = data.profiles.rename.find((x) => x.id === id);
-    if (p) useProfile(p);
-    else session.profileId = null;
-  }
+  const list = $derived(rules.steps[0]?.type === 'list');
+  /** something under Options is not the default */
+  const custom = $derived(dest.mode !== 'inplace' || rules.conflict !== 'add' || !rules.pair);
 
   /** Step 1 becomes a PDF value or a list step; a source step of the other kind is replaced, a modifier stays after it. */
   async function nameFrom(kind: 'pdf' | 'list') {
-    session.picking = null;
     const steps = session.rules.steps;
     const t = steps[0]?.type;
     const keep = kind === 'list' ? t === 'list' : t === 'pdfValue' || t === 'pdfPattern';
@@ -36,10 +30,9 @@
       else steps.unshift(step);
     }
     stepView.open = 0;
-    if (kind !== 'list') return;
     session.editing = true;
     await tick();
-    document.querySelector<HTMLElement>('[data-part="choose-list"]')?.focus();
+    document.querySelector<HTMLElement>(kind === 'list' ? '[data-part="choose-list"]' : '[data-tour="keyword"]')?.focus();
   }
 
   function setMode(mode: keyof typeof DEST) {
@@ -55,60 +48,62 @@
 </script>
 
 <div class="card bar">
-  <ProfileBar id="rn-profile" tour="profile" profiles={data.profiles.rename} current={session.profileId} onpick={pick} onsave={saveProfile} />
+  <ProfileBar id="rn-profile" tour="profile" profiles={data.profiles.rename} current={session.profileId} onpick={pickProfile} onsave={saveProfile} />
   <span class="vr"></span>
   <div class="grp">
     <span class="label" id="rn-from">Name from</span>
     <div class="seg" role="group" aria-labelledby="rn-from">
-      <button aria-pressed={!session.picking && rules.steps[0]?.type !== 'list'} onclick={() => void nameFrom('pdf')}>Text in the PDF</button>
-      <button data-part="pick" aria-pressed={!!session.picking} disabled={!firstPdf} title={firstPdf ? undefined : 'Add a PDF first'} onclick={() => (session.picking ??= firstPdf!)}>Click on the PDF</button>
-      <button aria-pressed={!session.picking && rules.steps[0]?.type === 'list'} onclick={() => void nameFrom('list')}>A list</button>
+      <button aria-pressed={!list} onclick={() => void nameFrom('pdf')}>PDF text</button>
+      <button aria-pressed={list} onclick={() => void nameFrom('list')}>A list</button>
     </div>
   </div>
-  <span class="vr"></span>
-  <div class="grp">
-    <span class="label" id="rn-dest-l">Files go</span>
-    <button class="dd" data-part="dest" aria-labelledby="rn-dest-l rn-dest-b" id="rn-dest-b" popovertarget="rn-dest" style="anchor-name: --rn-dest">{DEST[dest.mode]}</button>
-    <div class="pop" id="rn-dest" popover style="position-anchor: --rn-dest">
-      <div class="seg" role="group" aria-label="Files go">
+  <span class="grow"></span>
+  <button class="btn" data-part="options" popovertarget="rn-opts" style="anchor-name: --rn-opts">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4" /></svg>
+    Options
+    {#if custom}<span class="dot"></span><span class="sr">changed</span>{/if}
+  </button>
+  <div class="pop opts" id="rn-opts" popover style="position-anchor: --rn-opts">
+    <div class="line">
+      <span class="label" id="rn-dest-l">Files go</span>
+      <div class="seg" role="group" aria-labelledby="rn-dest-l">
         {#each Object.entries(DEST) as [m, label] (m)}
-          <button aria-pressed={dest.mode === m} onclick={() => setMode(m as keyof typeof DEST)}>{label}</button>
+          <button data-part={dest.mode === m ? 'dest' : undefined} aria-pressed={dest.mode === m} onclick={() => setMode(m as keyof typeof DEST)}>{label}</button>
         {/each}
       </div>
       {#if dest.mode !== 'inplace'}
-        <label class="label" for="rn-folder">Folder</label>
-        <div class="row nowrap">
-          <input id="rn-folder" class="field mono" spellcheck="false" bind:value={dest.folder} />
+        <div class="row nowrap wide">
+          <input class="field mono" aria-label="Folder" placeholder="Folder" spellcheck="false" bind:value={dest.folder} />
           <button class="btn small" onclick={() => void pickCopyFolder()}>Choose…</button>
         </div>
-        <div class="row">
-          {#each TOKENS as t (t)}<button class="chip mono" onclick={() => addToken(t)}>{t}</button>{/each}
+        <div class="row wide">
+          <span class="label">Sort into folders by</span>
+          {#each TOKENS as [t, label] (t)}<button class="chip" title={t} onclick={() => addToken(t)}>{label}</button>{/each}
         </div>
       {/if}
     </div>
+    <div class="line">
+      <span class="label" id="rn-taken-l">If taken</span>
+      <div class="seg" role="group" aria-labelledby="rn-taken-l">
+        {#each CONFLICTS as [v, label, tip] (v)}
+          <button data-part={rules.conflict === v ? 'conflict' : undefined} aria-pressed={rules.conflict === v} title={tip} onclick={() => (session.rules.conflict = v)}>{label}</button>
+        {/each}
+      </div>
+    </div>
+    <div class="line">
+      <span class="label" id="rn-pair-l">Matching files</span>
+      <div class="seg" role="group" aria-labelledby="rn-pair-l">
+        <button data-part={rules.pair ? 'pair' : undefined} aria-pressed={rules.pair} onclick={() => (session.rules.pair = true)}>Rename too</button>
+        <button data-part={rules.pair ? undefined : 'pair'} aria-pressed={!rules.pair} onclick={() => (session.rules.pair = false)}>Leave alone</button>
+      </div>
+    </div>
+    <div class="line">
+      <span></span>
+      <button class="btn small" disabled={session.busy || !!island.activity} onclick={reset}>Reset</button>
+    </div>
   </div>
-  <span class="vr"></span>
-  <div class="grp">
-    <label class="label" for="rn-conflict">If taken</label>
-    <select id="rn-conflict" class="dd" data-part="conflict" bind:value={session.rules.conflict}>
-      <option value="add">Add (1)</option>
-      <option value="skip">Skip</option>
-      <option value="replace">Replace (Recycle Bin)</option>
-    </select>
-  </div>
-  <span class="vr"></span>
-  <div class="grp">
-    <label class="label" for="rn-pair">Matching files</label>
-    <select id="rn-pair" class="dd" data-part="pair" value={rules.pair ? 'yes' : 'no'} onchange={(e) => (session.rules.pair = e.currentTarget.value === 'yes')}>
-      <option value="yes">Rename too</option>
-      <option value="no">Leave alone</option>
-    </select>
-  </div>
-  <span class="grow"></span>
-  <button class="btn small" disabled={session.busy || !!island.activity} onclick={reset}>Reset</button>
 </div>
 
 <style>
-  .pop { width: 380px; }
   .nowrap { flex-wrap: nowrap; }
 </style>

@@ -517,6 +517,13 @@ export function useProfile(p: SplitProfile) {
   session.editing = false;
 }
 
+/** The profile list's choice: that profile's rules, or no profile (the rules stay). */
+export function pickProfile(id: string | null) {
+  const p = data.profiles.split.find((x) => x.id === id);
+  if (p) useProfile(p);
+  else session.profileId = null;
+}
+
 /** Rules back to the loaded profile (else the defaults) and an empty file list. Not while a batch runs. */
 export function reset() {
   if (session.busy) return;
