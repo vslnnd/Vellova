@@ -23,7 +23,7 @@
   });
 </script>
 
-<header class="bar" data-tauri-drag-region>
+<header class="titlebar" data-tauri-drag-region>
   <div class="brand" data-tauri-drag-region>
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6l7 12 7-12" /></svg>
     <span data-tauri-drag-region>Vellova</span>
@@ -43,7 +43,8 @@
 </header>
 
 <style>
-  .bar { height: 60px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(138px, 1fr); align-items: center; background: var(--chrome); border-bottom: 1px solid var(--border); }
+  /* not `.bar`: that is the command bar in app.css, whose padding and alignment would push everything down */
+  .titlebar { height: 60px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(138px, 1fr); align-items: center; background: var(--chrome); border-bottom: 1px solid var(--border); }
   /* the island may grow (an open chip): the name gives way, the window buttons never do */
   .brand { display: flex; align-items: center; gap: 10px; padding-left: 18px; font-weight: 600; letter-spacing: -0.01em; min-width: 0; overflow: hidden; white-space: nowrap; }
   .brand svg { flex: none; }

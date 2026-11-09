@@ -111,7 +111,7 @@
 
   <div class="layer note" class:on={active === 'working'} bind:offsetWidth={w.working}>
     <span class="wtext">{active === 'working' ? text : ''}</span>
-    <span class="bar" aria-hidden="true">
+    <span class="track" aria-hidden="true">
       {#if !island.activity?.total}<span class="indet"></span>{/if}
       <span class="fill" style:width="{pct}%"><span class="sheen"></span></span>
     </span>
@@ -226,15 +226,17 @@
   .nchip.attention { background: var(--warnsoft); color: var(--warn); }
   .nchip.update { background: var(--soft); color: var(--accent); }
   .nchip:hover, .nchip:focus-within { width: max-content; }
+  /* opens only when the pointer rests on it: passing over a chip must not resize the island and move its buttons */
+  .nchip:hover:not(:focus-within) { transition-delay: 220ms, 0s; }
   .chip-icon { width: 36px; height: 36px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
   .chip-icon.nudge3 svg { animation: nudge 2.2s ease-in-out 700ms 3; }
   .nchip:hover .chip-icon.nudge3 svg { animation: nudge 2.2s ease-in-out infinite; }
   .chip-text { font-size: 13px; font-weight: 500; color: var(--text); max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .nchip button { margin: 0 3px 0 10px; }
   .chip-text, .nchip button { opacity: 0; transition: opacity 200ms ease; }
-  .nchip:hover .chip-text, .nchip:focus-within .chip-text, .nchip:hover button, .nchip:focus-within button { opacity: 1; transition-delay: 120ms; }
+  .nchip:hover .chip-text, .nchip:focus-within .chip-text, .nchip:hover button, .nchip:focus-within button { opacity: 1; transition-delay: 300ms; }
 
-  .bar { position: relative; width: 140px; height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; }
+  .track { position: relative; width: 140px; height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; }
   .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--accent); overflow: hidden; transition: width 420ms cubic-bezier(0.2, 0.8, 0.2, 1); }
   .indet { position: absolute; top: 0; bottom: 0; width: 40%; border-radius: 999px; background: var(--accent); animation: indet 1.15s cubic-bezier(0.45, 0, 0.25, 1) infinite; }
   .sheen { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 25%, var(--sheen) 50%, transparent 75%); background-size: 220% 100%; animation: sheen 1.5s linear infinite; }

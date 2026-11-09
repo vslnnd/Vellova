@@ -11,7 +11,7 @@ export type DataIO = {
 };
 
 export const DEFAULT_SETTINGS: Settings = {
-  theme: 'system',
+  theme: 'light',
   updates: { onStartup: true, everyHours: 6 },
   rename: { folder: '', recursive: false },
   split: { archive: false, favourites: [], folder: '' },

@@ -10,7 +10,7 @@
   import { startTour } from '../tour/tour.svelte';
   import { checkForUpdate, scheduleUpdates } from '../updater';
 
-  const THEMES: [ThemePref, string][] = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']];
+  const THEMES: [ThemePref, string][] = [['light', 'Light'], ['dark', 'Dark'], ['system', 'System']];
   const EVERY: [number, string][] = [[1, 'every hour'], [6, 'every 6 hours'], [24, 'once a day'], [0, 'never']];
   let version = $state('');
   let old = $state(false);
