@@ -1,9 +1,10 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { ipc } from '../shared/ipc';
-  import { splitPath } from '../shared/names';
+  import { extOf, splitPath } from '../shared/names';
   import type { Position } from '../shared/types';
   import { findValue } from './engine/findValue';
+  import { PDF } from './engine/files';
   import { classifyPdfError, type Item } from './engine/pdfItems';
   import { proposeLabel } from './engine/propose';
   import { matchNo } from './engine/profile';
@@ -22,7 +23,18 @@
   /** the page the drawn canvas and `words` belong to (lags `page` while the next one renders) */
   let shownPage = $state(0);
   let words = $state<Word[]>([]);
-  let width = $state(0);
+  /** the room for the page: the scroll area's inner size */
+  let roomW = $state(0);
+  let roomH = $state(0);
+  // the page is drawn to fit the height (an A4 page is 1.414 times as tall as wide), between a readable minimum and the room there is
+  const width = $derived(Math.max(0, Math.min(roomW - 28, Math.max(560, Math.min(820, (roomH - 24) / 1.414)))));
+
+  /** the list's PDFs, for the previous and next file buttons */
+  const pdfs = $derived(session.files.filter((f) => extOf(f.path) === PDF).map((f) => f.path));
+  const at = $derived(pdfs.indexOf(path));
+  /** files that could not be opened this time: the picker moves past them on its own */
+  const failed = new Set<string>();
+  const other = (by: number) => (session.picking = pdfs[at + by]);
   let canvas: HTMLCanvasElement;
   let kwInput = $state<HTMLInputElement>();
 
@@ -51,7 +63,12 @@
         items = text.items;
         bytes = b;
       } catch (e) {
-        if (live) error = classifyPdfError(e).detail;
+        if (!live) return;
+        // an unreadable file is not worth a dead end: show the next PDF that might open
+        failed.add(p);
+        const next = pdfs.find((x) => !failed.has(x));
+        if (next) session.picking = next;
+        else error = classifyPdfError(e).detail;
       }
     })();
     return () => (live = false);
@@ -91,9 +108,9 @@
     position = p?.position ?? 'after';
     occurrence = p?.occurrence ?? 1;
     notFound = !p;
-    if (p) return;
     await tick();
-    kwInput?.focus();
+    document.querySelector('.picker .word.on')?.scrollIntoView({ block: 'nearest' }); // the proposal took room: keep the clicked value in view
+    if (!p) kwInput?.focus();
   }
 
   /** The first PDF value step takes the proposal; without one, step 1 becomes one (a source step is replaced). */
@@ -119,6 +136,14 @@
 <div class="card picker">
   <div class="row head">
     <h3 class="mono name" title={path}>{splitPath(path).name}</h3>
+    {#if pdfs.length > 1}
+      <button class="ib" aria-label="Previous file" title="Previous file" disabled={at <= 0} onclick={() => other(-1)}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+      </button>
+      <button class="ib" aria-label="Next file" title="Next file" disabled={at < 0 || at >= pdfs.length - 1} onclick={() => other(1)}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+      </button>
+    {/if}
     <span class="grow"></span>
     {#if pages > 1}
       <button class="ib" aria-label="Previous page" disabled={page <= 1} onclick={() => page--}>
@@ -131,9 +156,10 @@
     {/if}
     <button class="btn small" onclick={() => void close()}>Cancel</button>
   </div>
-  <div class="scroll">
+  <div class="main">
+  <div class="scroll" bind:clientWidth={roomW} bind:clientHeight={roomH}>
     {#if error}<p class="err" role="alert">{error}</p>{/if}
-    <div class="page" bind:clientWidth={width}>
+    <div class="page" style:width="{width}px">
       <canvas bind:this={canvas}></canvas>
       {#each words as w, k (k)}
         <button
@@ -167,23 +193,28 @@
       </div>
     </div>
   {/if}
+  </div>
 </div>
 
 <style>
-  .picker { flex: 1; min-height: 0; padding: 0; gap: 0; }
+  .picker { flex: 1; min-width: 0; min-height: 0; padding: 0; gap: 0; }
+  /* the page, and beside it (so the page keeps its height) what the click proposes */
+  .main { flex: 1; min-height: 0; display: flex; }
   .head { padding: 12px 14px; border-bottom: 1px solid var(--border); flex-wrap: nowrap; }
   .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
   .pages { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .grow { flex: 1; min-width: 0; }
   .nowrap { flex-wrap: nowrap; }
   .ib { width: 28px; height: 28px; }
-  .scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 12px 14px; }
-  .page { position: relative; width: 100%; }
+  .scroll { flex: 1; min-width: 0; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 12px 14px; }
+  .page { position: relative; margin: 0 auto; }
   canvas { display: block; background: #fff; box-shadow: 0 0 0 1px var(--border); }
   .word { position: absolute; padding: 0; border: 0; border-radius: 2px; background: transparent; cursor: pointer; }
   .word:hover, .word:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .word.on { outline: 2px solid var(--accent); }
-  .proposal { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border); }
+  .proposal { flex: 0 0 300px; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-left: 1px solid var(--border); overflow: auto; }
+  .proposal .seg { flex: 1 0 100%; display: grid; grid-template-columns: repeat(4, 1fr); }
+  .proposal .seg button { padding: 0; }
   .num { width: 64px; }
   .gives { font-size: 12.5px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .err { margin: 0 0 8px; font-size: 12px; color: var(--errink); }
