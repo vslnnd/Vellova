@@ -93,7 +93,7 @@
       <svg class="moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" /></svg>
     </button>
     {#each shown as c (c)}
-      <div class="chip {c}">
+      <div class="nchip {c}">
         <span class="chip-icon" class:nudge3={c === 'update'} aria-hidden="true">
           {#if c === 'done'}
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></svg>
@@ -217,21 +217,22 @@
   .out.quiet { border-color: transparent; }
   .act:active, .out:active { transform: scale(0.94); }
 
-  .chip {
+  /* not `.chip`: that is the token chip in app.css, whose padding and border would push the icon off centre */
+  .nchip {
     display: flex; align-items: center; height: 36px; width: 36px; flex-shrink: 0; margin-left: 2px; border-radius: 999px; overflow: hidden;
     transition: width 400ms var(--spring), background 200ms ease; animation: pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
   }
-  .chip.done { background: var(--cap2); color: var(--text2); animation: slidein 560ms cubic-bezier(0.34, 1.4, 0.64, 1) both; }
-  .chip.attention { background: var(--warnsoft); color: var(--warn); }
-  .chip.update { background: var(--soft); color: var(--accent); }
-  .chip:hover, .chip:focus-within { width: max-content; }
+  .nchip.done { background: var(--cap2); color: var(--text2); animation: slidein 560ms cubic-bezier(0.34, 1.4, 0.64, 1) both; }
+  .nchip.attention { background: var(--warnsoft); color: var(--warn); }
+  .nchip.update { background: var(--soft); color: var(--accent); }
+  .nchip:hover, .nchip:focus-within { width: max-content; }
   .chip-icon { width: 36px; height: 36px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
   .chip-icon.nudge3 svg { animation: nudge 2.2s ease-in-out 700ms 3; }
-  .chip:hover .chip-icon.nudge3 svg { animation: nudge 2.2s ease-in-out infinite; }
+  .nchip:hover .chip-icon.nudge3 svg { animation: nudge 2.2s ease-in-out infinite; }
   .chip-text { font-size: 13px; font-weight: 500; color: var(--text); max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .chip button { margin: 0 3px 0 10px; }
-  .chip-text, .chip button { opacity: 0; transition: opacity 200ms ease; }
-  .chip:hover .chip-text, .chip:focus-within .chip-text, .chip:hover button, .chip:focus-within button { opacity: 1; transition-delay: 120ms; }
+  .nchip button { margin: 0 3px 0 10px; }
+  .chip-text, .nchip button { opacity: 0; transition: opacity 200ms ease; }
+  .nchip:hover .chip-text, .nchip:focus-within .chip-text, .nchip:hover button, .nchip:focus-within button { opacity: 1; transition-delay: 120ms; }
 
   .bar { position: relative; width: 140px; height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; }
   .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--accent); overflow: hidden; transition: width 420ms cubic-bezier(0.2, 0.8, 0.2, 1); }
