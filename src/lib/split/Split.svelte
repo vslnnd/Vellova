@@ -49,7 +49,7 @@
   // after a batch, the island's attention count follows the fixes made here
   $effect(() => {
     const n = attention;
-    if (!session.loading && !session.dirty && island.attention && island.attention !== n) send({ type: 'attention', count: n });
+    if (island.attentionTool === 'split' && !session.loading && !session.dirty && island.attention && island.attention !== n) send({ type: 'attention', count: n });
   });
 
   onMount(() => {

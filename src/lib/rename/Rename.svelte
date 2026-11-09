@@ -30,7 +30,7 @@
   // after a batch, the island's attention count follows the fixes made here (not mid-read, when rows are only waiting)
   $effect(() => {
     const n = sum.attention;
-    if (!session.loading && !session.dirty && island.attention && island.attention !== n) send({ type: 'attention', count: n });
+    if (island.attentionTool === 'rename' && !session.loading && !session.dirty && island.attention && island.attention !== n) send({ type: 'attention', count: n });
   });
 
   onMount(() => {

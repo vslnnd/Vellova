@@ -470,7 +470,7 @@ export async function runBatch(only?: string[]) {
   log({ level: 'info', tool: 'rename', message: b.summary });
   // from the merged batch, so Open matches the summary after Apply fixes too
   const open = openTarget(b.items.filter((i) => i.ok).map((i) => i.to));
-  send({ type: 'finish', text: b.summary, attention: plan.items.filter((i) => i.status === 'attention').length, open });
+  send({ type: 'finish', text: b.summary, attention: plan.items.filter((i) => i.status === 'attention').length, open, tool: 'rename' });
 }
 
 export const applyFixes = () => runBatch([...session.fixed]);

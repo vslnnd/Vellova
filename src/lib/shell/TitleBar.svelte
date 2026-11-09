@@ -43,8 +43,10 @@
 </header>
 
 <style>
-  .bar { height: 60px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; background: var(--chrome); border-bottom: 1px solid var(--border); }
-  .brand { display: flex; align-items: center; gap: 10px; padding-left: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .bar { height: 60px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(138px, 1fr); align-items: center; background: var(--chrome); border-bottom: 1px solid var(--border); }
+  /* the island may grow (an open chip): the name gives way, the window buttons never do */
+  .brand { display: flex; align-items: center; gap: 10px; padding-left: 18px; font-weight: 600; letter-spacing: -0.01em; min-width: 0; overflow: hidden; white-space: nowrap; }
+  .brand svg { flex: none; }
   .win { justify-self: end; display: flex; height: 100%; }
   .wb { width: 46px; height: 60px; border: 0; background: transparent; color: var(--text3); display: inline-flex; align-items: center; justify-content: center; transition: background 160ms ease, color 160ms ease; }
   .wb:hover { background: var(--hover); color: var(--text); }

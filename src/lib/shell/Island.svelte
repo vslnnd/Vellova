@@ -45,6 +45,7 @@
 
   const toggle = (p: PanelName) => (ui.panel = ui.panel === p ? null : p);
   function review() {
+    if (island.attentionTool) ui.tool = island.attentionTool; // the panel lists the files of the tool on screen
     ui.panel = 'attention';
     send({ type: 'collapse' });
   }
@@ -133,7 +134,7 @@
 
   <div class="layer note" class:on={active === 'attention'} bind:offsetWidth={w.attention}>
     <span class="icon warn">
-      {#if active === 'attention'}<svg class="pop" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z" /><path d="M12 10v5M12 18v.5" /></svg>{/if}
+      {#if active === 'attention'}<svg class="popin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z" /><path d="M12 10v5M12 18v.5" /></svg>{/if}
     </span>
     <span class="msg">{noticeText(island, 'attention')}</span>
     <button class="out" onclick={review}>Review</button>
@@ -154,7 +155,7 @@
 
   <div class="layer note" class:on={active === 'restored'} bind:offsetWidth={w.restored}>
     <span class="icon muted">
-      {#if active === 'restored'}<svg class="pop" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></svg>{/if}
+      {#if active === 'restored'}<svg class="popin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></svg>{/if}
     </span>
     <span class="msg">{active === 'restored' ? text : ''}</span>
   </div>
@@ -227,7 +228,7 @@
   .chip-icon { width: 36px; height: 36px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
   .chip-icon.nudge3 svg { animation: nudge 2.2s ease-in-out 700ms 3; }
   .chip:hover .chip-icon.nudge3 svg { animation: nudge 2.2s ease-in-out infinite; }
-  .chip-text { font-size: 13px; font-weight: 500; color: var(--text); }
+  .chip-text { font-size: 13px; font-weight: 500; color: var(--text); max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip button { margin: 0 3px 0 10px; }
   .chip-text, .chip button { opacity: 0; transition: opacity 200ms ease; }
   .chip:hover .chip-text, .chip:focus-within .chip-text, .chip:hover button, .chip:focus-within button { opacity: 1; transition-delay: 120ms; }
@@ -239,7 +240,8 @@
 
   .check { animation: pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
   .check path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: draw 420ms cubic-bezier(0.65, 0, 0.35, 1) 180ms forwards; }
-  .pop { animation: pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+  /* not `.pop`: that is the popover card in app.css */
+  .popin { animation: pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
   .dropnudge { animation: drop 620ms cubic-bezier(0.34, 1.56, 0.64, 1) both, nudge 2.2s ease-in-out 900ms infinite; }
   .spin { animation: spin 900ms linear infinite; }
 

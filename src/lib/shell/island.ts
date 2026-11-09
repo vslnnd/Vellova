@@ -23,6 +23,8 @@ export type IslandState = {
   opened: OpenTarget | null;
   /** how many files need attention */
   attention: number;
+  /** the tool whose list those files are in; only that tool's screen keeps the count up to date */
+  attentionTool: 'rename' | 'split' | null;
   /** version of a downloaded update */
   update: string | null;
   transient: { kind: 'restarting' | 'restored'; text: string } | null;
@@ -33,7 +35,7 @@ export type IslandState = {
 export type IslandEvent =
   | { type: 'start'; label: string; total: number; cancellable: boolean }
   | { type: 'progress'; done: number; total: number }
-  | { type: 'finish'; text: string | null; attention: number; open?: OpenTarget | null }
+  | { type: 'finish'; text: string | null; attention: number; open?: OpenTarget | null; tool?: 'rename' | 'split' }
   | { type: 'stop' }
   | { type: 'collapse' }
   | { type: 'attention'; count: number }
@@ -44,7 +46,7 @@ export type IslandEvent =
   | { type: 'clearTransient' }
   | { type: 'reset' };
 
-export const INITIAL: IslandState = { activity: null, done: null, opened: null, attention: 0, update: null, transient: null, open: null };
+export const INITIAL: IslandState = { activity: null, done: null, opened: null, attention: 0, attentionTool: null, update: null, transient: null, open: null };
 
 /** How long each layer stays before it folds (spec: done 4 s, attention 6 s, update 3.5 s). */
 export const TIMEOUT_MS: Partial<Record<Layer, number>> = { done: 4000, attention: 6000, update: 3500, restored: 2200 };
@@ -56,7 +58,7 @@ export function reduce(s: IslandState, e: IslandEvent): IslandState {
     case 'progress':
       return s.activity ? { ...s, activity: { ...s.activity, done: e.done, total: e.total } } : s;
     case 'finish':
-      return { ...s, activity: null, done: e.text ?? s.done, opened: e.text ? (e.open ?? null) : s.opened, attention: e.attention, open: e.attention ? 'attention' : e.text ? 'done' : null };
+      return { ...s, activity: null, done: e.text ?? s.done, opened: e.text ? (e.open ?? null) : s.opened, attention: e.attention, attentionTool: e.tool ?? null, open: e.attention ? 'attention' : e.text ? 'done' : null };
     case 'stop':
       return { ...s, activity: null };
     case 'collapse':

@@ -500,7 +500,7 @@ export async function runBatch(only?: string[]) {
   log({ level: 'info', tool: 'split', message: b.summary });
   // the outputs only: an archived source is not something this batch made
   const open = openTarget(b.items.filter((i) => i.ok && !i.archived).map((i) => i.to));
-  send({ type: 'finish', text: b.summary, attention: plan.items.filter((i) => i.status === 'attention').length, open });
+  send({ type: 'finish', text: b.summary, attention: plan.items.filter((i) => i.status === 'attention').length, open, tool: 'split' });
 }
 
 export const applyFixes = () => runBatch([...session.fixed]);

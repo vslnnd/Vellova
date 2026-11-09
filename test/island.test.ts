@@ -49,6 +49,11 @@ describe('island', () => {
     expect(chips(s)).toEqual([]);
   });
 
+  it('a batch records which tool its attention files belong to', () => {
+    expect(run(start, { type: 'finish', text: '8 files renamed', attention: 9, tool: 'rename' }).attentionTool).toBe('rename');
+    expect(run(start, { type: 'finish', text: '8 files renamed', attention: 9, tool: 'rename' }, { type: 'reset' }).attentionTool).toBeNull();
+  });
+
   it('undo shows restored briefly and removes the Undo chip', () => {
     const s = run(start, { type: 'finish', text: '2 files renamed', attention: 0 }, { type: 'collapse' }, { type: 'restored', text: '2 names restored' });
     expect(layer(s)).toBe('restored');
