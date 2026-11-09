@@ -81,13 +81,11 @@
 <section class="card">
   <h3>Split</h3>
   <label class="inline"><input type="checkbox" bind:checked={data.settings.split.archive} onchange={() => save('settings')} /> Archive originals after splitting</label>
-  <p class="hint">Each profile sets its archive folder in Profiles.</p>
 </section>
 
 {#if old}
   <section class="card">
     <h3>Earlier data</h3>
-    <p class="hint">Import profiles and history from your previous apps. Anything imported before is skipped.</p>
     <div class="row"><button class="btn small" disabled={busy} onclick={() => void bring()}>Import</button></div>
     {#if imported}<p class="hint" role="status">{imported}</p>{/if}
   </section>
@@ -95,7 +93,7 @@
 
 <section class="card">
   <h3>About</h3>
-  <p class="hint">Vellova {version}. Your files, history and log never leave this computer.</p>
+  <p class="hint">Vellova {version}</p>
   <div class="row">
     <button class="btn small" onclick={() => void openUrl('https://github.com/vslnnd/Vellova/issues/new')}>Send feedback</button>
   </div>

@@ -27,12 +27,10 @@
   Vellova renames files in batches, for example using an invoice number printed in a PDF, with matching spreadsheets renamed along
   with it, and splits spreadsheets into separate files.
 </p>
-<p class="hint">Everything stays on this computer. Every batch can be undone from History.</p>
 
 {#if found && !later}
   <div class="card">
     <h3>Bring your earlier setup</h3>
-    <p class="hint">Profiles, history and settings from your previous apps are on this computer. The old apps keep their own copies.</p>
     {#if result}
       <p role="status">{result}</p>
     {:else}
