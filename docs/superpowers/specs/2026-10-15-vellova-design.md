@@ -246,7 +246,7 @@ States and timing:
 - **Reset** puts the rules back to the loaded profile (to the defaults when no profile is loaded), returns the left column to its summary and clears the file list. It is unavailable while a batch runs.
 - **Left column, Rename:** an Example on top (the first ready PDF's new name with the found value marked; nothing until a PDF has one), then "New name" as numbered steps.
   - Each step shows a one-line title of what it does, for example `Text after "Invoice No.:"`. A click opens its editor; one editor is open at a time. Arrows move a step up or down, and a cross removes it; the three show while the step is pointed at or holds the focus.
-  - A Value-from-PDF step shows Keyword, with the Click on the PDF button beside it, and Position (After, Before, Below, Above on one line). Match number shows once it is not 1, or while the step is pointed at or holds the focus.
+  - A Value-from-PDF step shows Keyword, with the Click on the PDF button beside it, and Position (After, Before, Below, Above on one line). Under them, "If found more than once" chooses which hit to use (the 1st to start). Nothing in a step appears or disappears on hover or focus except its move and remove buttons, which share the title's row, so the controls below never shift under the pointer.
   - "Add step" is a button as wide as the steps, under the last one. Its menu has two groups side by side: *Change the name* (Add text, Replace, Remove, Trim spaces, Change case, Numbering, Date) and *Name from* (Value from PDF, Pattern from PDF, From a list).
 - **Left column, Split:** the chosen mode's own fields under its title.
   - Split by value: the column and the values table (value, label, payable), whose headings always show; "+ Add value"; a one-line paste field for rows from Excel; and Keep non-matching rows. Choosing a column while the table is empty fills it with the column's distinct values (up to 200), all payable, so the first preview is not empty.
@@ -282,9 +282,11 @@ A Rename setup is an ordered list of **steps**. Each step runs on a file's **bas
 - `desktop.ini`, `Thumbs.db` and Office's `~$` lock files are never listed.
 - Add files offers PDFs and companion files, or All files; by file name it offers All files.
 
+**A name from several values.** A Value-from-PDF or Pattern step after the first has "In the name": Replace (it becomes the name, as a first step does), Start or End (it joins the name so far at that end, with a separator, `_` to start). A value step added while another is already there starts on End. `INV-2041_Fabrikam` is two value steps. Every value must be found: a PDF missing one needs attention. `{value}`, and the value companions are matched on, stay the value the name began as, not a value that joined it. The Click on the PDF button fills the step it was pressed on and keeps that step's "In the name".
+
 **Source steps** replace the name with a value. A value found in the PDF (by Value from PDF or Pattern from PDF) is also exposed as `{value}`; a list lookup is not.
 
-- **Value from PDF:** keyword (empty to start), position (After to start; before | after | above | below), and match number (1 to start). PDFs only. The rules are under "The 1.4.6 engine".
+- **Value from PDF:** keyword (empty to start), position (After to start; before | after | above | below), and which hit to use when the keyword is found more than once ("If found more than once": Use the 1st to start). PDFs only. The rules are under "The 1.4.6 engine".
 - **Pattern from PDF:** one of five, plus a match number (1 to start) for the first three. Invoice-style number is the default.
   - *Invoice-style number:* one to six capital letters, an optional `-` or `/`, then three or more digits and further `-` or `/` digit groups (`INV-2026-0042`, `A12345`).
   - *Date:* `yyyy-MM-dd`, or day, month and year separated by `.` or `/` (`3.7.2026`, `03/07/26`), as written in the PDF.
