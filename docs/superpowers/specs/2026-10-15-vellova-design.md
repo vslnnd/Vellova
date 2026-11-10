@@ -374,7 +374,7 @@ Each companion file is matched against the set of extracted PDF values in one pa
 
 The installer adds classic context-menu entries under `HKCU\Software\Classes`, so no admin rights are needed. The uninstaller removes them in the post-uninstall hook (`NSIS_HOOK_POSTUNINSTALL`), after the running-app check, so a cancelled uninstall keeps them:
 
-- **Rename with Vellova** on .pdf, .xlsx, .csv, .xml and .txt files and on folders;
+- **Rename with Vellova** on every file and on folders (Rename can work on a file's own name, whatever its type). An update removes the per-type entries that versions up to 0.3.0 wrote;
 - **Split with Vellova** on .xlsx, .xls and .csv files and on folders.
 
 Each entry runs `Vellova.exe --rename "<path>"` or `--split "<path>"` and has `MultiSelectModel` set to `Player`, so a selection of many files starts one process per file. The first process opens the app; the others pass their path to the running instance (single-instance), which comes to the front. The app collects every launch and adds all the paths to one list on the right tool, closing any open panel. A folder is read as if dropped on the window: Rename follows "Include subfolders when adding a folder" in Settings, and Split reads only the folder's own files. Files the tool doesn't take are left out. While the tour runs, files sent from Explorer are not added, and the Log says so. A pending "Resume the tour?" card gives way to files sent from Explorer, and is not offered when files are already on a screen.
