@@ -105,5 +105,5 @@
   li { display: flex; flex-direction: column; gap: 4px; }
   .file { font-size: 12.5px; }
   .grow { flex: 1; min-width: 0; }
-  .foot { position: sticky; bottom: -24px; padding: 12px 0; background: var(--surface); border-top: 1px solid var(--border); }
+  .foot { position: sticky; bottom: -28px; padding: 12px 0 16px; background: var(--bg); border-top: 1px solid var(--border); }
 </style>

@@ -20,7 +20,7 @@
   let vw = $state(innerWidth);
   let vh = $state(innerHeight);
   let rect = $state<Rect | null>(null);
-  let panel = $state<Rect | null>(null); // the open panel on a PANEL_STEPS step, cut out of the veil too
+  let panel = $state<Rect | null>(null); // the open page on a PANEL_STEPS step, cut out of the veil too (the bubble then sits in its bottom right corner)
   let stuck = $state(false);
   let confirm = $state(false);
   let box = $state<HTMLElement>(); // the card or the hint bubble
@@ -34,8 +34,8 @@
   const below = $derived(!rect || rect.y + rect.h + 190 < vh);
   // a target too tall for the bubble on either side (the drop zone) gets it inside its top edge
   const above = $derived(!below && !!rect && rect.y - 190 > 0);
-  const bubbleLeft = $derived(panel ? Math.max(panel.x - BUBBLE - 16, 16) : rect ? Math.min(Math.max(rect.x + rect.w / 2 - BUBBLE / 2, 16), vw - BUBBLE - 16) : vw / 2 - BUBBLE / 2);
-  const bubbleTop = $derived(!rect ? vh / 2 : below ? rect.y + rect.h + PAD + 40 : above ? rect.y - PAD - 40 : rect.y + PAD + 16);
+  const bubbleLeft = $derived(panel ? vw - BUBBLE - 24 : rect ? Math.min(Math.max(rect.x + rect.w / 2 - BUBBLE / 2, 16), vw - BUBBLE - 16) : vw / 2 - BUBBLE / 2);
+  const bubbleTop = $derived(panel ? vh - 24 : !rect ? vh / 2 : below ? rect.y + rect.h + PAD + 40 : above ? rect.y - PAD - 40 : rect.y + PAD + 16);
 
   const target = () => (step?.target ? document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`) : null);
 
@@ -215,7 +215,7 @@
           <path d="M12 20V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       {/if}
-      <div class="bubble" class:above role="dialog" aria-modal="true" aria-label="Tour, step {n} of {counted.length}" bind:this={box} style:left="{bubbleLeft}px" style:top="{bubbleTop}px" style:width="{BUBBLE}px">
+      <div class="bubble" class:above={above || !!panel} role="dialog" aria-modal="true" aria-label="Tour, step {n} of {counted.length}" bind:this={box} style:left="{bubbleLeft}px" style:top="{bubbleTop}px" style:width="{BUBBLE}px">
         {#if lost}<p class="lost">{@render rich(lost)}</p>{/if}
         <p aria-live="polite">{@render rich(step.text)}</p>
         {#if step.id === 'drop' || (lost && v.samples === 0)}
