@@ -14,9 +14,10 @@
   import { edited, plan, session } from './session.svelte';
   import StepEditor from './StepEditor.svelte';
 
-  const ADD: [Step['type'], string][] = [
-    ['addText', 'Add text'], ['replace', 'Replace'], ['remove', 'Remove'], ['trim', 'Trim spaces'], ['case', 'Change case'],
-    ['number', 'Numbering'], ['date', 'Date'], ['pdfPattern', 'Pattern from PDF'], ['pdfValue', 'Value from PDF'], ['list', 'From a list'],
+  /** what a step can be: the ones that change the name so far, then the ones that take a new name from somewhere */
+  const ADD: [string, [Step['type'], string][]][] = [
+    ['Change the name', [['addText', 'Add text'], ['replace', 'Replace'], ['remove', 'Remove'], ['trim', 'Trim spaces'], ['case', 'Change case'], ['number', 'Numbering'], ['date', 'Date']]],
+    ['Name from', [['pdfValue', 'Value from PDF'], ['pdfPattern', 'Pattern from PDF'], ['list', 'From a list']]],
   ];
 
   const profile = $derived(data.profiles.rename.find((p) => p.id === session.profileId));
@@ -99,9 +100,17 @@
           </li>
         {/each}
       </ol>
-      <button class="link" popovertarget="rn-add" style="anchor-name: --rn-add">+ Add step</button>
+      <button class="add" popovertarget="rn-add" style="anchor-name: --rn-add">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        Add step
+      </button>
       <div class="pop menu" id="rn-add" popover bind:this={addMenu} style="position-anchor: --rn-add">
-        {#each ADD as [type, label] (type)}<button onclick={() => add(type)}>{label}</button>{/each}
+        {#each ADD as [group, items] (group)}
+          <div class="col">
+            <span class="label">{group}</span>
+            {#each items as [type, label] (type)}<button onclick={() => add(type)}>{label}</button>{/each}
+          </div>
+        {/each}
       </div>
     </div>
   {/if}
@@ -126,8 +135,18 @@
   .step:hover .head .ib, .step:focus-within .head .ib { opacity: 1; }
   .step:hover .head .ib:disabled, .step:focus-within .head .ib:disabled { opacity: 0.35; cursor: default; }
   .body { display: flex; flex-direction: column; gap: 8px; padding: 4px 12px 12px; }
-  .link { align-self: flex-start; padding: 2px 0; border: 0; background: none; color: var(--accent); font-size: 12.5px; text-align: left; }
-  .link:hover { text-decoration: underline; }
+  /* as wide as the steps above it, so it is hard to miss and easy to hit */
+  .add {
+    display: flex; align-items: center; justify-content: center; gap: 8px; height: 36px; border-radius: 8px;
+    border: 1px dashed var(--border2); background: transparent; color: var(--text2); font-size: 13px; font-weight: 500;
+    transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+  }
+  .add:hover { border-color: var(--accent); color: var(--accent); background: var(--soft); }
+  /* the two kinds of step side by side, so the menu is short enough to open under the button */
+  .menu:popover-open { display: grid; grid-template-columns: 1fr 1fr; gap: 0 4px; width: 380px; }
+  .col { display: flex; flex-direction: column; }
+  .col + .col { padding-left: 4px; border-left: 1px solid var(--border); }
+  .col .label { padding: 6px 10px 4px; }
   .example { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
   .example .mono { font-size: 13px; overflow-wrap: anywhere; }
   .v { color: var(--accent); }
