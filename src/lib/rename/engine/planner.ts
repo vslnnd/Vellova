@@ -1,7 +1,7 @@
 import { expandFolder, extOf, join, sanitize, splitExt, splitPath } from '../../shared/names';
 import type { OpResult } from '../../shared/ipc';
 import type { BatchItem, Conflict, Destination, Op, PlanItem, Reason, Status } from '../../shared/types';
-import { PDF, pathKey } from './files';
+import { COMPANIONS, PDF, pathKey } from './files';
 import type { Named } from './steps';
 
 export type PlanInput = {
@@ -23,6 +23,8 @@ export type PlanInput = {
   skipped: Set<string>;
   /** PDF → its {n} and {date}, used for a PDF without a name (failed or still reading) */
   slots?: Record<string, { n: string; date: string }>;
+  /** the steps work on each file's own name: every file is named like a PDF, and keeps its extension as written */
+  byName?: boolean;
 };
 
 /** A drive path (C:\ or C:/) or a network path (\\server). */
@@ -50,7 +52,7 @@ function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
 
   /** Gives `source` the first free name of `base`, `base (1)`, `base (2)`… in `dir`. */
   const place = (source: string, base: string, status: Status, dir: string): PlanItem => {
-    const ext = extOf(source);
+    const ext = input.byName ? splitExt(splitPath(source).name).ext : extOf(source);
     if (!base) return item(source, 'attention', { reason: 'no-value', detail: 'The new name would be empty.' });
     // a relative folder would land beside the program, where Undo after a restart can't find it
     if (dest.mode !== 'inplace' && !FULL_PATH.test(dest.folder)) return item(source, 'pending', { name: base + ext, detail: dest.folder ? 'Use a full folder path.' : `Choose a folder to ${dest.mode} into.` });
@@ -83,7 +85,7 @@ function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
   // PDFs and typed names claim names first; companions then take their PDF's final name.
   for (const f of input.files) {
     if (input.skipped.has(f)) out.set(f, item(f, 'skipped'));
-    else if (extOf(f) === PDF) {
+    else if (input.byName || extOf(f) === PDF) {
       const v = input.names[f];
       if (f in input.overrides) out.set(f, place(f, sanitize(input.overrides[f]), 'ready', folderOf(f, v)));
       else if (!v) out.set(f, item(f, 'pending', { detail: 'Waiting for its value…' }));
@@ -101,6 +103,8 @@ function planOnce(input: PlanInput, leaving: Set<string>): PlanItem[] {
     // A typed name needs no PDF to match. In place it stays where the companion is; in a folder it goes beside its PDF.
     const typed = f in input.overrides ? sanitize(input.overrides[f]) : null;
     if (typed !== null && (!p || dest.mode === 'inplace')) out.set(f, place(f, typed, 'ready', folderOf(f)));
+    // a type that can't follow a PDF (it got into the list while renaming by file name)
+    else if (typed === null && !COMPANIONS.includes(extOf(f))) out.set(f, item(f, 'unchanged', { detail: 'Only PDFs and their matching files are renamed from PDF text.' }));
     else if (typed === null && !input.pairEnabled) out.set(f, item(f, 'unchanged', { detail: 'Pairing with PDFs is off.' }));
     else if (typed === null && v) out.set(f, item(f, 'attention', { reason: v.reason, detail: v.detail }));
     else if (typed === null && !input.pairs) out.set(f, item(f, 'pending', { detail: 'Waiting for the PDFs…' }));

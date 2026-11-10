@@ -40,6 +40,8 @@ describe('stepLabel', () => {
 
   it('names replace, remove, trim and case steps', () => {
     expect(text({ type: 'replace', find: 'a', with: 'b', regex: false, matchCase: false, all: true })).toBe('Replace "a" with "b"');
+    expect(text({ type: 'replace', find: ' (2)', with: '', regex: false, matchCase: false, all: true })).toBe('Remove " (2)"');
+    expect(text({ type: 'replace', find: '', with: '', regex: false, matchCase: false, all: true })).toBe('Replace text');
     const rm = (what: 'range' | 'digits' | 'between'): Step => ({ type: 'remove', what, from: 3, to: 5, start: '(', end: ')' });
     expect(text(rm('range'))).toBe('Remove characters 3 to 5');
     expect(text(rm('digits'))).toBe('Remove digits');

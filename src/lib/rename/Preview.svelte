@@ -3,6 +3,7 @@
   import { REASONS } from '../shared/reasons';
   import type { PlanItem, Status } from '../shared/types';
   import { clearFiles, pickFiles, pickFolder, plan, refresh, removeFile, session, setName, skip } from './session.svelte';
+  import { byName } from './engine/steps';
   import { tourRow } from '../tour/tour.svelte';
 
   const PILL: Record<Status, [string, string]> = {
@@ -15,6 +16,8 @@
     pending: ['muted', 'Waiting'],
   };
   const nameOf = (p: string) => splitPath(p).name;
+  /** the extension the new name will have: lower-cased from PDF text (as always), as written when renaming by file name */
+  const extShown = (p: string) => (byName(session.rules.steps) ? splitExt(nameOf(p)).ext : extOf(p));
   const shownName = (it: PlanItem) => session.overrides[it.source] ?? (it.name ? splitExt(it.name).base : '');
   /** A file that needs attention says why on its pill; the full sentence is its tooltip and in Needs attention. */
   const pillText = (it: PlanItem) => (it.status === 'attention' && it.reason ? REASONS[it.reason].title : PILL[it.status][1]);
@@ -56,7 +59,7 @@
             disabled={it.status === 'skipped'}
             onchange={(e) => setName(it.source, e.currentTarget.value)}
           />
-          <span class="ext mono">{extOf(it.source)}</span>
+          <span class="ext mono">{extShown(it.source)}</span>
         </span>
         <span class="end">
         <span class="acts">
@@ -92,7 +95,7 @@
   .from { font-size: 12.5px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* the extension sits right after the name: the field is as wide as what is in it */
   .to { display: flex; align-items: center; min-width: 0; }
-  .to input { field-sizing: content; min-width: 96px; max-width: calc(100% - 48px); height: 28px; padding: 0 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; font-size: 12.5px; font-weight: 500; }
+  .to input { field-sizing: content; min-width: 28px; max-width: calc(100% - 48px); height: 28px; padding: 0 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; font-size: 12.5px; font-weight: 500; }
   .to input:placeholder-shown { border-color: var(--border2); background: var(--bg); font-weight: 400; }
   .to input:hover { border-color: var(--border); }
   .to input:focus { border-color: var(--accent); outline: none; background: var(--bg); }

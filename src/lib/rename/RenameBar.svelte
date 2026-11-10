@@ -4,9 +4,9 @@
   import ProfileBar from '../shared/ProfileBar.svelte';
   import type { Conflict, Step } from '../shared/types';
   import { island } from '../shell/islandState.svelte';
-  import { NEW_STEP } from './engine/steps';
+  import { byName, NEW_STEP } from './engine/steps';
   import { stepView } from './RenameSettings.svelte';
-  import { pickCopyFolder, pickProfile, reset, saveProfile, session } from './session.svelte';
+  import { nameFromFileName, pickCopyFolder, pickProfile, reset, saveProfile, session } from './session.svelte';
 
   const DEST = { inplace: 'Rename in place', copy: 'Copy to', move: 'Move to' } as const;
   const CONFLICTS: [Conflict, string, string?][] = [['add', 'Add (1)'], ['skip', 'Skip'], ['replace', 'Replace', 'The file that is there goes to the Recycle Bin']];
@@ -15,12 +15,21 @@
 
   const rules = $derived(session.rules);
   const dest = $derived(rules.destination);
+  /** the steps work on each file's own name */
+  const named = $derived(byName(rules.steps));
   const list = $derived(rules.steps[0]?.type === 'list');
   /** something under Options is not the default */
-  const custom = $derived(dest.mode !== 'inplace' || rules.conflict !== 'add' || !rules.pair);
+  const custom = $derived(dest.mode !== 'inplace' || rules.conflict !== 'add' || (!named && !rules.pair));
 
   /** Step 1 becomes a PDF value or a list step; a source step of the other kind is replaced, a modifier stays after it. */
-  async function nameFrom(kind: 'pdf' | 'list') {
+  async function nameFrom(kind: 'pdf' | 'list' | 'name') {
+    if (kind === 'name') {
+      if (!named) nameFromFileName();
+      stepView.open = 0;
+      session.editing = true;
+      await tick();
+      return void document.querySelector<HTMLElement>('.steps .body input')?.focus();
+    }
     const steps = session.rules.steps;
     const t = steps[0]?.type;
     const keep = kind === 'list' ? t === 'list' : t === 'pdfValue' || t === 'pdfPattern';
@@ -53,7 +62,8 @@
   <div class="grp">
     <span class="label" id="rn-from">Name from</span>
     <div class="seg" role="group" aria-labelledby="rn-from">
-      <button aria-pressed={!list} onclick={() => void nameFrom('pdf')}>PDF text</button>
+      <button aria-pressed={!list && !named} onclick={() => void nameFrom('pdf')}>PDF text</button>
+      <button aria-pressed={named} onclick={() => void nameFrom('name')}>File name</button>
       <button aria-pressed={list} onclick={() => void nameFrom('list')}>A list</button>
     </div>
   </div>
@@ -90,6 +100,7 @@
         {/each}
       </div>
     </div>
+    {#if !named}
     <div class="line">
       <span class="label" id="rn-pair-l">Matching files</span>
       <div class="seg" role="group" aria-labelledby="rn-pair-l">
@@ -97,6 +108,7 @@
         <button data-part={rules.pair ? undefined : 'pair'} aria-pressed={!rules.pair} onclick={() => (session.rules.pair = false)}>Leave alone</button>
       </div>
     </div>
+    {/if}
     <div class="line">
       <span></span>
       <button class="btn small" disabled={session.busy || !!island.activity} onclick={reset}>Reset</button>

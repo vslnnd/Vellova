@@ -9,7 +9,7 @@
   import { data } from '../shared/state.svelte';
   import SummaryCard from '../shared/SummaryCard.svelte';
   import type { Step } from '../shared/types';
-  import { NEW_STEP } from './engine/steps';
+  import { byName, NEW_STEP } from './engine/steps';
   import { renameSummary, stepLabel } from './engine/summary';
   import { edited, plan, session } from './session.svelte';
   import StepEditor from './StepEditor.svelte';
@@ -58,7 +58,8 @@
 
   // the first ready PDF's new name, its value marked
   const example = $derived.by(() => {
-    const it = plan.items.find((i) => i.status === 'ready' && extOf(i.source) === '.pdf' && i.name);
+    const any = byName(session.rules.steps);
+    const it = plan.items.find((i) => i.status === 'ready' && (any || extOf(i.source) === '.pdf') && i.name);
     if (!it) return null;
     const name = it.name!;
     const n = session.names[it.source];

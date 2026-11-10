@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { mergeFiles } from '../src/lib/rename/engine/files';
+import { isJunk, mergeFiles } from '../src/lib/rename/engine/files';
 import { planRename, readResults, summary, type PlanInput } from '../src/lib/rename/engine/planner';
 import { DEFAULT_RULES, profileFromRules, renameProfile, rulesFromProfile, type RenameRules } from '../src/lib/rename/engine/profile';
-import type { Named } from '../src/lib/rename/engine/steps';
+import { byName, NEW_STEP, type Named } from '../src/lib/rename/engine/steps';
 import type { PlanItem } from '../src/lib/shared/types';
 
 const named = (base: string, value = base): Named => ({ ok: true, base, value, n: '1', date: '2026-10-23' });
@@ -220,6 +220,41 @@ describe('planRename', () => {
       const same = plan({ files: [P], names: { [P]: named('DN', 'x') }, existing: new Set(['c:\\out\\x\\dn.pdf']), destination: { mode: 'move', folder: 'C:\\out\\{value}' } });
       expect(same[0]).toMatchObject({ status: 'unchanged', op: null });
     });
+  });
+});
+
+describe('renaming by file name', () => {
+  const D = 'C:\\in\\Report (2).DOCX', X = 'C:\\in\\data (2).xlsx';
+
+  it('is on when no step takes the name from a PDF or a list', () => {
+    expect(byName([NEW_STEP.replace, NEW_STEP.trim])).toBe(true);
+    expect(byName([])).toBe(true);
+    expect(byName([NEW_STEP.replace, NEW_STEP.pdfValue])).toBe(false);
+    expect(byName([NEW_STEP.list])).toBe(false);
+  });
+
+  it('names every file from its steps, whatever its type, and keeps the extension as written', () => {
+    const items = plan({ files: [D, X], byName: true, names: { [D]: named('Report'), [X]: named('data') } });
+    expect(brief(items)).toEqual([['ready', 'Report.DOCX'], ['ready', 'data.xlsx']]);
+    expect(items[0].op).toEqual({ kind: 'rename', from: D, to: 'C:\\in\\Report.DOCX' });
+  });
+
+  it('a name the steps leave as it is stays unchanged, upper-case extension and all', () => {
+    expect(brief(plan({ files: [D], byName: true, names: { [D]: named('Report (2)') } }))).toEqual([['unchanged', 'Report (2).DOCX']]);
+  });
+
+  it('from PDF text, a type that can follow no PDF is left alone', () => {
+    expect(plan({ files: [D] })[0]).toMatchObject({ status: 'unchanged', op: null });
+  });
+
+  it('never lists the files Windows and Office keep beside real ones', () => {
+    expect(['C:\\in\\~$Report.docx', 'C:\\in\\desktop.ini', 'C:/in/Thumbs.db'].map(isJunk)).toEqual([true, true, true]);
+    expect(isJunk('C:\\in\\Report.docx')).toBe(false);
+  });
+
+  it('mergeFiles takes every type when told to', () => {
+    const f = (path: string) => ({ path, size: 1, mtime: 1, ctime: 1 });
+    expect(mergeFiles([], [f(D), f(X)], null).map((x) => x.path)).toEqual([D, X]);
   });
 });
 

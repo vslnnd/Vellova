@@ -26,6 +26,12 @@ export const PRESETS: Record<'invoice' | 'date', RegExp> = {
 };
 
 /** What "+ Add a step" starts from. */
+/**
+ * No step takes the name from a PDF or a list: the steps then work on each file's own name. Every file in the
+ * list is renamed that way, whatever its type, and nothing is read from inside the files.
+ */
+export const byName = (steps: Step[]): boolean => !steps.some((s) => s.type === 'pdfValue' || s.type === 'pdfPattern' || s.type === 'list');
+
 export const NEW_STEP: Record<Step['type'], Step> = {
   pdfValue: { type: 'pdfValue', keyword: '', position: 'after', occurrence: 1 },
   pdfPattern: { type: 'pdfPattern', preset: 'invoice', regex: '', occurrence: 1 },

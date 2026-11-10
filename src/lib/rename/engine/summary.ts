@@ -21,7 +21,7 @@ export function stepLabel(s: Step): string {
       return `Add ${[ends, inserted].filter(Boolean).join(', ') || 'text'}`;
     }
     case 'replace':
-      return `Replace ${quote(s.find)} with ${quote(s.with)}`;
+      return !s.find ? 'Replace text' : s.with ? `Replace ${quote(s.find)} with ${quote(s.with)}` : `Remove ${quote(s.find)}`;
     case 'remove':
       return { range: `Remove characters ${s.from} to ${s.to}`, digits: 'Remove digits', between: `Remove text between ${quote(s.start)} and ${quote(s.end)}` }[s.what];
     case 'trim':

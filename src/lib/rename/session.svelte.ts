@@ -13,12 +13,12 @@ import type { Grid } from '../split/engine/grid';
 import { readGrid } from '../split/sheets';
 import { readCompanion } from './companions';
 import type { CompanionData } from './engine/companion';
-import { mergeFiles, PDF, pathKey } from './engine/files';
+import { COMPANIONS, isJunk, mergeFiles, PDF, pathKey, SUPPORTED } from './engine/files';
 import { pairCompanions } from './engine/pairing';
 import { classifyPdfError } from './engine/pdfItems';
 import { planRename, readResults } from './engine/planner';
 import { DEFAULT_RULES, healStep, profileFromRules, rulesFromProfile, type RenameRules } from './engine/profile';
-import { formatDate, listKey, listMap, patternError, runSteps, type ListRead, type Named, type PdfText } from './engine/steps';
+import { byName, formatDate, listKey, listMap, NEW_STEP, patternError, runSteps, type ListRead, type Named, type PdfText } from './engine/steps';
 import { readPdfText } from './pdf';
 
 export { REASONS };
@@ -27,6 +27,8 @@ type Failure = { reason: Reason; detail: string };
 
 export const session = $state({
   files: [] as FileInfo[],
+  /** files added while names came from PDFs that are neither a PDF nor a type that follows one: they join the list when names come from file names */
+  aside: [] as FileInfo[],
   rules: structuredClone(DEFAULT_RULES) as RenameRules,
   profileId: null as string | null,
   /** the left column shows the settings instead of the loaded profile's summary; set by Edit or Change, ended by using a profile or Reset */
@@ -73,9 +75,9 @@ function waitReason(steps: Step[]): string | null {
 }
 
 /** {n} and {date} of every PDF, so a PDF without a name (failed, or still reading) still expands its folder. */
-function slotsOf(files: FileInfo[], today: Date) {
+function slotsOf(files: FileInfo[], today: Date, named = false) {
   const date = formatDate(today, 'yyyy-MM-dd');
-  const pdfs = files.filter((f) => extOf(f.path) === PDF);
+  const pdfs = named ? files : files.filter((f) => extOf(f.path) === PDF);
   return Object.fromEntries(pdfs.map((f, i) => [f.path, { n: String(i + 1), date }]));
 }
 
@@ -86,7 +88,8 @@ const items = $derived.by(() => {
     files: session.files.map((f) => f.path),
     names: session.names,
     failures: session.readFailures,
-    slots: slotsOf(session.files, new Date()),
+    slots: slotsOf(session.files, new Date(), byName(r.steps)),
+    byName: byName(r.steps),
     pairs: session.pairs && { ...session.pairs, ...session.manualPairs },
     pairEnabled: r.pair,
     destination: r.destination,
@@ -233,6 +236,7 @@ export async function refresh() {
   const steps = rules.steps.map(healStep);
   const wait = waitReason(steps);
   const needPdf = steps.some((s) => s.type === 'pdfValue' || s.type === 'pdfPattern');
+  const named = byName(steps); // every file is named from its own name; nothing is read
   session.loading = true;
   // the island only shows reading that takes a while
   const timer = setTimeout(() => {
@@ -253,12 +257,12 @@ export async function refresh() {
     const failures: Record<string, Failure> = {};
     const sheets: { path: string; data: CompanionData }[] = [];
     const today = new Date();
-    const slots = slotsOf(files, today);
+    const slots = slotsOf(files, today, named);
     let n = 0;
     let index = 0;
     for (const f of files) {
       const ext = extOf(f.path); // lower-cased
-      if (ext === PDF) {
+      if (named || ext === PDF) {
         if (!wait) {
           const r = needPdf ? await readCached(pdfCache, f, readPdfText, classifyPdfError) : null;
           if (stale()) return;
@@ -266,7 +270,7 @@ export async function refresh() {
           names[f.path] = !r || r.ok ? runSteps(steps, { base, pdf: r?.data ?? null, lists, index, mtime: f.mtime, ctime: f.ctime, today }) : r;
         }
         index++;
-      } else if (rules.pair) {
+      } else if (rules.pair && COMPANIONS.includes(ext)) {
         const r = await readCached(sheetCache, f, (b) => readCompanion(ext, b), sheetError);
         if (stale()) return;
         if (r.ok) sheets.push({ path: f.path, data: r.data });
@@ -320,15 +324,35 @@ export async function refresh() {
 let addFilter: ((path: string) => boolean) | null = null;
 export const setAddFilter = (f: ((path: string) => boolean) | null) => (addFilter = f);
 
+/** The steps of a new rename by file name: find and replace in the name. */
+const nameSteps = (): Step[] => [structuredClone(NEW_STEP.replace)];
+
+/** Name from › File name: the steps that take a name from a PDF or a list go; without any step left, a Replace step starts. */
+export function nameFromFileName() {
+  const rest = session.rules.steps.filter((s) => byName([s]));
+  session.rules.steps = rest.length ? rest : nameSteps();
+  session.files = mergeFiles(session.files, session.aside, null);
+  session.aside = [];
+}
+
 export async function addPaths(paths: string[]) {
   if (!paths.length) return;
-  const listed = await ipc.listFiles(paths, data.settings.rename.recursive);
+  const all = (await ipc.listFiles(paths, data.settings.rename.recursive)).filter((f) => !isJunk(f.path));
   const keep = addFilter;
-  session.files = mergeFiles(session.files, keep ? listed.filter((f) => keep(f.path)) : listed);
+  const listed = keep ? all.filter((f) => keep(f.path)) : all;
+  // Files that can only be renamed by their name (not a PDF, not a type that follows one), dropped on a screen
+  // nobody has set up yet: rename by file name, rather than leaving them out without a word.
+  const untouched = !session.files.length && !session.profileId && JSON.stringify($state.snapshot(session.rules.steps)) === JSON.stringify(DEFAULT_RULES.steps);
+  if (untouched && listed.length && !listed.some((f) => SUPPORTED.includes(extOf(f.path)))) session.rules.steps = nameSteps();
+  const named = byName(session.rules.steps);
+  session.files = mergeFiles(session.files, listed, named ? null : SUPPORTED);
+  if (!named) session.aside = mergeFiles(session.aside, listed.filter((f) => !SUPPORTED.includes(extOf(f.path))), null);
 }
 
 export async function pickFiles() {
-  const picked = await open({ multiple: true, filters: [{ name: 'PDFs and companion files', extensions: ['pdf', 'xlsx', 'txt', 'xml', 'csv'] }] });
+  const pdfs = { name: 'PDFs and companion files', extensions: ['pdf', 'xlsx', 'txt', 'xml', 'csv'] };
+  const any = { name: 'All files', extensions: ['*'] };
+  const picked = await open({ multiple: true, filters: byName(session.rules.steps) ? [any] : [pdfs, any] });
   if (picked) await addPaths(picked);
 }
 
@@ -361,6 +385,7 @@ function forget(paths: string[]) {
 export const removeFile = (path: string) => forget([path]);
 
 export function clearFiles() {
+  session.aside = [];
   forget(session.files.map((f) => f.path));
   session.batch = null;
 }
