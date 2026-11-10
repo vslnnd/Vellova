@@ -10,9 +10,9 @@ const quote = (s: string) => `"${s}"`;
 export function stepLabel(s: Step): string {
   switch (s.type) {
     case 'pdfValue':
-      return `Text ${s.position} ${s.keyword.trim() ? quote(s.keyword) : 'a keyword'}`;
+      return `${s.add ? 'Also text' : 'Text'} ${s.position} ${s.keyword.trim() ? quote(s.keyword) : 'a keyword'}`;
     case 'pdfPattern':
-      return { invoice: 'Invoice-style number', date: 'Date in the PDF', custom: `Pattern ${s.regex}`, title: 'Document title', created: 'Creation date' }[s.preset];
+      return (s.add ? 'Also: ' : '') + { invoice: 'Invoice-style number', date: 'Date in the PDF', custom: `Pattern ${s.regex}`, title: 'Document title', created: 'Creation date' }[s.preset];
     case 'list':
       return `Name from ${splitPath(s.path).name}`;
     case 'addText': {

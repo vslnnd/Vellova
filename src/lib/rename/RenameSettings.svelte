@@ -51,7 +51,11 @@
     else if (stepView.open > i) stepView.open--;
   }
   function add(type: Step['type']) {
-    session.rules.steps.push(structuredClone(NEW_STEP[type]));
+    const step = structuredClone(NEW_STEP[type]);
+    // a second value from the PDF joins the name the first one gave, rather than replacing it
+    const second = session.rules.steps.some((s) => s.type === 'pdfValue' || s.type === 'pdfPattern');
+    if (second && (step.type === 'pdfValue' || step.type === 'pdfPattern')) step.add = { at: 'end', sep: '_' };
+    session.rules.steps.push(step);
     stepView.open = session.rules.steps.length - 1;
     addMenu?.hidePopover();
   }
@@ -97,7 +101,7 @@
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
               </button>
             </div>
-            {#if stepView.open === i}<div class="body"><StepEditor step={s} first={i === 0} /></div>{/if}
+            {#if stepView.open === i}<div class="body"><StepEditor step={s} first={i === 0} index={i} /></div>{/if}
           </li>
         {/each}
       </ol>
@@ -131,9 +135,9 @@
     font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .ib.sm { width: 26px; height: 26px; }
-  /* move and remove stay out of the way until the step is pointed at or holds the focus */
-  .head .ib { opacity: 0; }
-  .step:hover .head .ib, .step:focus-within .head .ib { opacity: 1; }
+  /* move and remove stay out of the way until the step is pointed at or holds the focus; the title has the row until then (its height never changes) */
+  .head .ib { display: none; }
+  .step:hover .head .ib, .step:focus-within .head .ib { display: inline-flex; }
   .step:hover .head .ib:disabled, .step:focus-within .head .ib:disabled { opacity: 0.35; cursor: default; }
   .body { display: flex; flex-direction: column; gap: 8px; padding: 4px 12px 12px; }
   /* as wide as the steps above it, so it is hard to miss and easy to hit */

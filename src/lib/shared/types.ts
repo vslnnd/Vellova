@@ -27,9 +27,12 @@ export type PlanItem = { id: string; source: string; op: Op | null; status: Stat
 
 export type FileInfo = { path: string; size: number; mtime: number; ctime: number };
 
+/** Where a found value goes when it joins the name so far instead of becoming the name. */
+export type ValueAdd = { at: 'start' | 'end'; sep: string };
+
 export type Step =
-  | { type: 'pdfValue'; keyword: string; position: Position; occurrence: number }
-  | { type: 'pdfPattern'; preset: 'invoice' | 'date' | 'custom' | 'title' | 'created'; regex: string; occurrence: number }
+  | { type: 'pdfValue'; keyword: string; position: Position; occurrence: number; add?: ValueAdd }
+  | { type: 'pdfPattern'; preset: 'invoice' | 'date' | 'custom' | 'title' | 'created'; regex: string; occurrence: number; add?: ValueAdd }
   | { type: 'list'; path: string; match: string; name: string; against: 'name' | 'value' } // match/name: header names in row 1
   | { type: 'addText'; prefix: string; suffix: string; insert?: { text: string; at: number } } // at: 0 = before the first character
   | { type: 'replace'; find: string; with: string; regex: boolean; matchCase: boolean; all: boolean }

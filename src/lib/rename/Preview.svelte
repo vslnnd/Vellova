@@ -83,7 +83,7 @@
   .status { font-size: 12.5px; color: var(--text2); }
   .grow { flex: 1; }
   /* three shares of the width, the same in every row, so the names line up */
-  .cols, li { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 3.4fr) minmax(0, 4.6fr); align-items: center; gap: 8px; padding: 0 12px 0 14px; }
+  .cols, li { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 5fr) minmax(0, 3.2fr); align-items: center; gap: 8px; padding: 0 12px 0 14px; }
   .end { display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
   .end .pill { display: block; line-height: 20px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cols { padding-top: 8px; padding-bottom: 2px; font-size: 12px; color: var(--text3); }

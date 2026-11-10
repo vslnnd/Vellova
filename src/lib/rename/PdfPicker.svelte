@@ -7,6 +7,7 @@
   import { PDF } from './engine/files';
   import { classifyPdfError, type Item } from './engine/pdfItems';
   import { proposeLabel } from './engine/propose';
+  import { hitChoices, ordinal } from './engine/steps';
   import { matchNo } from './engine/profile';
   import { openPage, readPdfText, type Word } from './pdf';
   import { stepView } from './RenameSettings.svelte';
@@ -115,9 +116,12 @@
 
   /** The first PDF value step takes the proposal; without one, step 1 becomes one (a source step is replaced). */
   function use() {
-    const step = { type: 'pdfValue' as const, keyword: keyword.trim(), position, occurrence: matchNo(occurrence) };
     const steps = session.rules.steps;
-    const at = steps.findIndex((s) => s.type === 'pdfValue');
+    const from = session.pickStep;
+    const at = from !== null && steps[from]?.type === 'pdfValue' ? from : steps.findIndex((s) => s.type === 'pdfValue');
+    const old = steps[at];
+    // a step that adds its value to the name keeps doing so
+    const step = { type: 'pdfValue' as const, keyword: keyword.trim(), position, occurrence: matchNo(occurrence), ...(old?.type === 'pdfValue' && old.add ? { add: old.add } : {}) };
     if (at >= 0) steps[at] = step;
     else if (steps[0]?.type === 'pdfPattern' || steps[0]?.type === 'list') steps[0] = step;
     else steps.unshift(step);
@@ -128,6 +132,7 @@
   /** Back to the preview, with focus on the bar button that opened the picker. */
   async function close() {
     session.picking = null;
+    session.pickStep = null;
     await tick();
     document.querySelector<HTMLElement>('[data-part="pick"]')?.focus();
   }
@@ -185,7 +190,10 @@
             <button aria-pressed={position === v} onclick={() => (position = v)}>{label}</button>
           {/each}
         </div>
-        <label class="inline">Match number <input class="field num" type="number" min="1" max="99" bind:value={occurrence} /></label>
+        <label class="label wide" for="pk-hit">If found more than once</label>
+        <select id="pk-hit" class="field" bind:value={occurrence}>
+          {#each hitChoices(occurrence) as n (n)}<option value={n}>Use the {ordinal(n)}</option>{/each}
+        </select>
       </div>
       <div class="row nowrap">
         <span class="gives mono grow">Gives: {gives?.ok ? gives.value : 'nothing'}</span>
@@ -215,7 +223,7 @@
   .proposal { flex: 0 0 300px; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-left: 1px solid var(--border); overflow: auto; }
   .proposal .seg { flex: 1 0 100%; display: grid; grid-template-columns: repeat(4, 1fr); }
   .proposal .seg button { padding: 0; }
-  .num { width: 64px; }
+  .wide { flex-basis: 100%; }
   .gives { font-size: 12.5px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .err { margin: 0 0 8px; font-size: 12px; color: var(--errink); }
 </style>

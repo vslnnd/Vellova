@@ -32,6 +32,15 @@ export const PRESETS: Record<'invoice' | 'date', RegExp> = {
  */
 export const byName = (steps: Step[]): boolean => !steps.some((s) => s.type === 'pdfValue' || s.type === 'pdfPattern' || s.type === 'list');
 
+/** 1st, 2nd, 3rd, 4th… */
+export function ordinal(n: number): string {
+  const t = n % 100;
+  return n + (t >= 11 && t <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'));
+}
+
+/** The choices for which hit to use when a keyword or pattern is found more than once: the first nine, and the one in use. */
+export const hitChoices = (current: number): number[] => [...new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, current])].filter((n) => Number.isInteger(n) && n >= 1).sort((a, b) => a - b);
+
 export const NEW_STEP: Record<Step['type'], Step> = {
   pdfValue: { type: 'pdfValue', keyword: '', position: 'after', occurrence: 1 },
   pdfPattern: { type: 'pdfPattern', preset: 'invoice', regex: '', occurrence: 1 },
@@ -126,7 +135,11 @@ function apply(s: Step, st: State, ctx: StepCtx): Fail | null {
       if (!ctx.pdf) return fail('internal', 'The PDF text was not read.');
       const r = s.type === 'pdfValue' ? findValue(ctx.pdf.items, s.keyword, s.position, s.occurrence) : pdfPattern(s, ctx.pdf);
       if (!r.ok) return r;
-      st.name = st.value = r.value;
+      // a value that joins the name is a second piece of it: {value} and pairing stay with the value the name began as
+      if (s.add) {
+        st.name = join(st.name, r.value, s.add.at, s.add.sep);
+        st.value ??= r.value;
+      } else st.name = st.value = r.value;
       break;
     }
     case 'list': {

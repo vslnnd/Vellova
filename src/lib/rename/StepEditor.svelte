@@ -5,11 +5,11 @@
   import type { Position, Step } from '../shared/types';
   import { readGrid } from '../split/sheets';
   import { PDF } from './engine/files';
-  import { listKey, patternError } from './engine/steps';
+  import { hitChoices, listKey, ordinal, patternError } from './engine/steps';
   import { listReadError, refresh, session } from './session.svelte';
 
   /** `first`: step 1, which carries the tour's keyword and position targets */
-  let { step: s, first }: { step: Step; first: boolean } = $props();
+  let { step: s, first, index }: { step: Step; first: boolean; index: number } = $props();
   const uid = $props.id();
 
   const POSITIONS: [Position, string][] = [['after', 'After'], ['before', 'Before'], ['below', 'Below'], ['above', 'Above']];
@@ -64,6 +64,17 @@
   /** the picker fills the first Value-from-PDF step, so that one carries its button's focus target */
   const firstValue = $derived(session.rules.steps.find((x) => x.type === 'pdfValue') === s);
 
+  /** A value step after the first: the value becomes the name, or joins the name so far at one end. */
+  function setAdd(at: 'name' | 'start' | 'end') {
+    if (s.type !== 'pdfValue' && s.type !== 'pdfPattern') return;
+    if (at === 'name') delete s.add;
+    else s.add = { at, sep: s.add?.sep ?? '_' };
+  }
+
+  function setHit(n: number) {
+    if (s.type === 'pdfValue' || s.type === 'pdfPattern') s.occurrence = n;
+  }
+
   function setInsert(text: string) {
     if (s.type !== 'addText') return;
     if (text) s.insert = { text, at: s.insert?.at ?? 0 };
@@ -75,7 +86,7 @@
   <label class="label" for="{uid}-kw">Keyword</label>
   <div class="kw">
     <input id="{uid}-kw" data-tour={first ? 'keyword' : undefined} class="field mono" placeholder="Invoice No.:" spellcheck="false" bind:value={s.keyword} />
-    <button class="ib" data-part={firstValue ? 'pick' : undefined} disabled={!pickable} aria-label="Click on the PDF" title={pickable ? 'Click on the PDF' : 'Add a PDF first'} onclick={() => (session.picking = pickable!)}>
+    <button class="ib" data-part={firstValue ? 'pick' : undefined} disabled={!pickable} aria-label="Click on the PDF" title={pickable ? 'Click on the PDF' : 'Add a PDF first'} onclick={() => ((session.pickStep = index), (session.picking = pickable!))}>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>
     </button>
   </div>
@@ -85,7 +96,8 @@
       <button aria-pressed={s.position === v} onclick={() => s.type === 'pdfValue' && (s.position = v)}>{label}</button>
     {/each}
   </div>
-  <label class="inline more" class:set={s.occurrence !== 1}>Match number <input class="field num" type="number" min="1" max="99" bind:value={s.occurrence} /></label>
+  {@render hit(s)}
+  {@render joins(s)}
 {:else if s.type === 'pdfPattern'}
   <label class="label" for="{uid}-pre">Find</label>
   <select id="{uid}-pre" class="field" bind:value={s.preset}>
@@ -97,8 +109,9 @@
     {#if patternError(s)}<p class="err" role="alert">{patternError(s)}</p>{/if}
   {/if}
   {#if s.preset !== 'title' && s.preset !== 'created'}
-    <label class="inline">Use match number <input class="field num" type="number" min="1" max="99" bind:value={s.occurrence} /></label>
+    {@render hit(s)}
   {/if}
+  {@render joins(s)}
 {:else if s.type === 'list'}
   <div class="row">
     <button class="btn small" data-part="choose-list" onclick={() => void chooseList()}>Choose list…</button>
@@ -191,6 +204,27 @@
   {@render at(s)}
 {/if}
 
+{#snippet hit(t: Extract<Step, { type: 'pdfValue' | 'pdfPattern' }>)}
+  <label class="label" for="{uid}-hit">If found more than once</label>
+  <select id="{uid}-hit" class="field" value={t.occurrence} onchange={(e) => setHit(Number(e.currentTarget.value))}>
+    {#each hitChoices(t.occurrence) as n (n)}<option value={n}>Use the {ordinal(n)}</option>{/each}
+  </select>
+{/snippet}
+
+{#snippet joins(t: Extract<Step, { type: 'pdfValue' | 'pdfPattern' }>)}
+  {#if !first}
+    <span class="label" id="{uid}-join">In the name</span>
+    <div class="row nowrap">
+      <div class="seg join" role="group" aria-labelledby="{uid}-join">
+        <button aria-pressed={!t.add} onclick={() => setAdd('name')}>Replace</button>
+        <button aria-pressed={t.add?.at === 'start'} onclick={() => setAdd('start')}>Start</button>
+        <button aria-pressed={t.add?.at === 'end'} onclick={() => setAdd('end')}>End</button>
+      </div>
+      {#if t.add}<input class="field mono sep" aria-label="Separator" title="Separator" spellcheck="false" bind:value={t.add.sep} />{/if}
+    </div>
+  {/if}
+{/snippet}
+
 {#snippet at(t: Extract<Step, { type: 'number' | 'date' }>)}
   <div class="seg" role="group" aria-label="Where">
     {#each AT as [v, label] (v)}
@@ -202,7 +236,9 @@
 <style>
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .two .label { display: flex; flex-direction: column; gap: 4px; }
-  .num { width: 64px; }
+  .sep { width: 48px; flex: none; text-align: center; }
+  .seg.join { flex-wrap: nowrap; }
+  .nowrap { flex-wrap: nowrap; }
   .file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text2); }
   .err { margin: 0; flex: 1; min-width: 0; font-size: 12px; color: var(--errink); }
   .seg { align-self: flex-start; flex-wrap: wrap; }
@@ -211,7 +247,4 @@
   .kw { display: flex; align-items: center; gap: 4px; }
   .kw .ib { color: var(--accent); }
   .kw .ib:disabled { opacity: 0.35; cursor: default; }
-  /* which match to use is rarely changed: shown once it is, or while the step is pointed at or holds the focus */
-  .more { display: none; }
-  .more.set, :global(.step:hover) .more, :global(.step:focus-within) .more { display: inline-flex; }
 </style>

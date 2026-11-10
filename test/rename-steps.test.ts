@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pdfDate, type Item } from '../src/lib/rename/engine/pdfItems';
-import { formatDate, listMap, NEW_STEP, patternError, runSteps, type StepCtx } from '../src/lib/rename/engine/steps';
+import { formatDate, listMap, NEW_STEP, patternError, runSteps, type StepCtx, hitChoices, ordinal } from '../src/lib/rename/engine/steps';
 import type { Grid } from '../src/lib/split/engine/grid';
 import type { Step } from '../src/lib/shared/types';
 
@@ -35,6 +35,24 @@ describe('runSteps: sources and pairing values', () => {
 
   it('without steps the name stays the base and there is no value', () => {
     expect(runSteps([], ctx({}))).toEqual({ ok: true, base: 'scan 01', value: null, n: '5', date: '2026-10-23' });
+  });
+
+  it('a second value joins the name at one end; {value} stays the value the name began as', () => {
+    const also = (at: 'start' | 'end', sep = '_') => ({ ...pdfValue('Invoice No.:', 'after'), add: { at, sep } }) as Step;
+    const one = runSteps([pdfValue('Invoice No.:', 'after')], ctx({}));
+    if (!one.ok) throw new Error('no value');
+    expect(runSteps([pdfValue('Invoice No.:', 'after'), also('end')], ctx({}))).toMatchObject({ ok: true, base: `${one.base}_${one.base}`, value: one.value });
+    expect(runSteps([pdfValue('Invoice No.:', 'after'), also('start', ' - ')], ctx({}))).toMatchObject({ ok: true, base: `${one.base} - ${one.base}` });
+    // as the only value step it joins the file's own name, and is the value
+    expect(runSteps([also('end')], ctx({ base: 'scan' }))).toMatchObject({ ok: true, base: `scan_${one.base}`, value: one.value });
+    // a value that is not found still stops the file
+    expect(runSteps([pdfValue('Invoice No.:', 'after'), { ...pdfValue('Nope', 'after'), add: { at: 'end', sep: '_' } } as Step], ctx({}))).toMatchObject({ ok: false, reason: 'keyword-not-found' });
+  });
+
+  it('names the hit to use', () => {
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '23rd', '101st', '111th']);
+    expect(hitChoices(1)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(hitChoices(14)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 14]);
   });
 
   it('pdfValue failures keep the 1.4.6 reason; unread text is internal', () => {

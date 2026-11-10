@@ -40,6 +40,7 @@
 
   function pickOnPdf(path: string) {
     ui.panel = null;
+    rename.session.pickStep = null;
     rename.session.picking = path;
   }
 

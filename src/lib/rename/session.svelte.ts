@@ -35,6 +35,8 @@ export const session = $state({
   editing: false,
   /** the PDF the picker shows, while picking a value with a click */
   picking: null as string | null,
+  /** the Value-from-PDF step the picker was opened from and fills; null: the first one */
+  pickStep: null as number | null,
   /** per list step (listKey): why its list can't be used, from the last read */
   listErrors: {} as Record<string, string>,
   /** per PDF: its new name or why there is none (missing: not read yet) */

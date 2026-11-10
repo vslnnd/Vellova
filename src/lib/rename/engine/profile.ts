@@ -37,11 +37,13 @@ type Shape = Record<string, (v: unknown) => boolean>;
 const fits = (shape: Shape, v: unknown) => Object.entries(shape).every(([k, ok]) => ok(obj(v)[k]));
 const AT = oneOf(['start', 'end']);
 const INSERT: Shape = { text: isStr, at: isInt };
+const ADD: Shape = { at: AT, sep: isStr };
+const optionalAdd = (v: unknown) => v === undefined || fits(ADD, v);
 
 /** The field checks for each step kind. */
 const SHAPES: Record<Step['type'], Shape> = {
-  pdfValue: { keyword: isStr, position: oneOf(POSITIONS), occurrence: isInt },
-  pdfPattern: { preset: oneOf(['invoice', 'date', 'custom', 'title', 'created']), regex: isStr, occurrence: isInt },
+  pdfValue: { keyword: isStr, position: oneOf(POSITIONS), occurrence: isInt, add: optionalAdd },
+  pdfPattern: { preset: oneOf(['invoice', 'date', 'custom', 'title', 'created']), regex: isStr, occurrence: isInt, add: optionalAdd },
   list: { path: isStr, match: isStr, name: isStr, against: oneOf(['name', 'value']) },
   addText: { prefix: isStr, suffix: isStr, insert: (v) => v === undefined || fits(INSERT, v) },
   replace: { find: isStr, with: isStr, regex: isBool, matchCase: isBool, all: isBool },
