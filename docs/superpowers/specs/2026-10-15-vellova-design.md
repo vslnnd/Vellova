@@ -122,7 +122,7 @@ Plugins: `fs`, `dialog`, `updater`, `process`, `opener`, `single-instance`, `win
 
 Stored in `%APPDATA%\com.vslnnd.vellova\`:
 
-- `settings.json`: theme (`system` | `dark` | `light`), update checks (on startup; interval), default folders, archive toggle, the per-tool last-used folders, Split favourite folders.
+- `settings.json`: theme (`light` | `dark` | `system`), update checks (on startup; interval), default folders, archive toggle, the per-tool last-used folders, Split favourite folders.
 - `profiles.json`: `{ rename: RenameProfile[], split: SplitProfile[] }`.
 - `history.json`: the last 200 batches, each with tool, time, summary, the Plan, and the journal.
 - `log.jsonl`: the last 1,000 entries or 30 days, whichever is smaller.
@@ -210,7 +210,7 @@ States and timing:
 
 - Radius 6 for controls and 8 for panels; 999 for the island and pills.
 - Geist for UI text, Geist Mono for file names and values.
-- The theme defaults to `system`.
+- The theme defaults to `light`; Settings and the island switch it.
 - No screen carries hint lines, subtitles or explanatory text: labels, values and short error or status text stay.
 
 ### Screens and panels
@@ -247,19 +247,21 @@ States and timing:
 - **Left column, Rename:** an Example on top (the first ready PDF's new name with the found value marked; nothing until a PDF has one), then "New name" as numbered steps.
   - Each step shows a one-line title of what it does, for example `Text after "Invoice No.:"`. A click opens its editor; one editor is open at a time. Arrows move a step up or down, and a cross removes it; the three show while the step is pointed at or holds the focus.
   - A Value-from-PDF step shows Keyword, with the Click on the PDF button beside it, and Position (After, Before, Below, Above on one line). Match number shows once it is not 1, or while the step is pointed at or holds the focus.
-  - "+ Add step" opens a menu: Add text, Replace, Remove, Trim spaces, Change case, Numbering, Date, Pattern from PDF, Value from PDF, From a list.
+  - "Add step" is a button as wide as the steps, under the last one. Its menu has two groups side by side: *Change the name* (Add text, Replace, Remove, Trim spaces, Change case, Numbering, Date) and *Name from* (Value from PDF, Pattern from PDF, From a list).
 - **Left column, Split:** the chosen mode's own fields under its title.
   - Split by value: the column and the values table (value, label, payable), whose headings always show; "+ Add value"; a one-line paste field for rows from Excel; and Keep non-matching rows. Choosing a column while the table is empty fills it with the column's distinct values (up to 200), all payable, so the first preview is not empty.
   - Split among people: the names, each with its share; Rows: Even blocks | Keep groups together (with its group column); Output: One file per person | Assigned to column; and Summary.
   - Rows per file and Equal parts: one number. One file per sheet: nothing more.
 - **Preview, Rename:** one line per file under the headings Now and New name: the current name, the new name (editable) with its extension right after it, and a status. A file that needs attention says why on its status ("Keyword not found"); the full sentence is its tooltip and is in Needs attention. Skip and Remove show for the row that is pointed at or holds the focus. What every waiting file waits for ("Enter a keyword to find the value.") is said once, beside the file count, in both tools.
 - **Summary mode:** with a saved profile loaded and not edited, the left column shows a card with the profile's name and one line per setting (a label and its value), each with a Change link, plus an Edit button. Rename has one "New name" line per step, then Files go, If taken and Matching files. Split has Split by, Header, Save to, File names, Subfolders and Archive; a setting the mode doesn't use has no line. Change opens the editor and focuses that setting, opening Options if it is there; Edit opens the editor. Edit, Change or any change to the rules shows the editor; loading a profile or Reset brings the summary back. Without a profile the editor shows. The card holds no sentence or other explanatory text.
-- **Panels** slide in from the right over the current tool. Esc closes them, and the tool keeps its state underneath.
+- **Dropping files:** while files are dragged over the window, the screen under the title bar shows where they will go. When the tool on screen has no files, it is two halves, Rename on the left and Split on the right, and the half under the files is marked; the drop opens that tool with the files. When the tool has files, it is one zone and the files join its list. During the tour the files always go to Rename.
+- **Pages** (History, Profiles, Settings and Needs attention) cover the whole screen under the title bar, with their content in a centred column, a title and Close. Esc closes them, and the tool keeps its state underneath.
   - **History**, with two tabs:
     - *Batches:* both tools, filterable. Each batch offers Undo, Re-run (Split, while sources exist), Export report and Show files. Export report saves an .xlsx (default) or a .csv with one row per file under the headings Date, Old path, New path and Result (Done, Archived, Not finished, or the failure's reason). The date is the batch's time. The .csv is UTF-8 with a byte-order mark, so Excel reads it correctly.
     - *Log:* every error and warning from the engines, workers and app, with time, tool, file, a plain-language message and expandable technical details. Filter by tool and severity; Export .txt. Never sent anywhere.
-  - **Profiles:** Rename and Split profiles; create, edit, duplicate, delete; JSON import/export, which also accepts old Nomina and Splitify profile files.
-  - **Settings:** theme, updates, default folders, archive originals toggle, import old data, feedback (opens a GitHub issue), about.
+    - Each batch is a row with its summary, tool, time and profile, and Undo, Re-run, Show files and Export report on the row itself; the row opens to list its files.
+  - **Profiles:** Rename and Split profiles as cards, each with its settings as labels and values (what is switched off is left out), Use, and Rename, Duplicate and Delete; JSON import/export, which also accepts old Nomina and Splitify profile files.
+  - **Settings:** one short list of a label and a control per line: Theme (Light | Dark | System); Check for updates (Every hour | Every 6 hours | Once a day | When Vellova starts | Never; a timed check also checks at start); the version with Check now and its result; Include subfolders when adding a folder to Rename; Archive originals after splitting; the Copy-to folder with Clear, once there is one; import of earlier data, when there is any; the tour; feedback (opens a GitHub issue).
   - **Needs attention:** see Errors.
   - **Welcome:** first launch only; offers the migration.
 
@@ -380,7 +382,7 @@ Unsigned apps can't register in the Windows 11 compact menu, so the entries appe
 - .xlsx: read with ExcelJS, keeping styles.
 - .xls and .csv: read with SheetJS as values only. .csv encoding is auto-detected (UTF-8 with or without BOM, or Windows-1250/1252), and so is the delimiter (`,` `;` tab).
 - Pick the **sheet** (default: the first).
-- Pick the **header row**: **Default (1st row)** or **Manual** (click a row in a grid of the file's first 15 rows). Rows above a manual header are a title block, copied on top of every data output.
+- Pick the **header row**: **Default (1st row)** or **Manual** (click a row in a grid of the file's first 15 rows). Rows above a manual header are a title block, copied on top of every data output. Chosen under Options, the row is every file's. Chosen from a file's own row in the list ("Choose header row"), it is that file's alone and the other files keep theirs.
 
 ### Modes
 
