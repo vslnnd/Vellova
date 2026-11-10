@@ -224,7 +224,7 @@ States and timing:
 - **Profile** (bar and drop zone): a select, Save when a profile is loaded, and a Save as new profile icon button that opens a name field in place. The name field takes the focus; Enter saves, Esc cancels, and the focus returns to the select.
 - **Command bar, Rename:**
   - *Profile.*
-  - *Name from:* PDF text | A list. PDF text makes step 1 a Value-from-PDF step unless it already is a PDF step (a value or a pattern); A list makes it a From-a-list step unless it already is one, and focuses its Choose list… button. If step 1 is a source step of the other kind it is replaced; if step 1 is a modifier, the source step is inserted in front of it.
+  - *Name from:* PDF text | File name | A list. File name removes the steps that take a name from a PDF or a list and, when no step is left, starts with a Replace step whose Find field takes the focus (see "By file name" under Rename). PDF text makes step 1 a Value-from-PDF step unless it already is a PDF step (a value or a pattern); A list makes it a From-a-list step unless it already is one, and focuses its Choose list… button. If step 1 is a source step of the other kind it is replaced; if step 1 is a modifier, the source step is inserted in front of it.
   - *Options* (a popover, one line per setting):
     - *Files go:* Rename in place | Copy to | Move to. The last two add the folder, Choose… and "Sort into folders by" Value, Number and Date, which add `{value}`, `{n}` and `{date}` to the folder.
     - *If taken:* Add (1) | Skip | Replace (to the Recycle Bin).
@@ -275,6 +275,13 @@ A Rename setup is an ordered list of **steps**. Each step runs on a file's **bas
 - A step that fails for a file marks it *attention* with a reason; other files continue.
 - The preview recalculates live, debounced by 150 ms.
 
+**By file name.** When no step takes the name from a PDF or a list, the steps work on each file's own name. Every file in the list is then renamed, whatever its type, nothing is read from inside the files, each file keeps its extension as written, and Matching files does not apply. This is how unwanted text is taken out of names: a Replace step with " (2)" in Find and nothing in Replace with.
+
+- Files of other types added while names come from PDFs are kept aside and join the list when File name is chosen. Back on PDF text they stay listed as Unchanged.
+- Files of other types only (no PDF and no type that follows one), dropped on a screen that has not been set up yet (no profile, the starting step untouched, no files), switch it to File name.
+- `desktop.ini`, `Thumbs.db` and Office's `~$` lock files are never listed.
+- Add files offers PDFs and companion files, or All files; by file name it offers All files.
+
 **Source steps** replace the name with a value. A value found in the PDF (by Value from PDF or Pattern from PDF) is also exposed as `{value}`; a list lookup is not.
 
 - **Value from PDF:** keyword (empty to start), position (After to start; before | after | above | below), and match number (1 to start). PDFs only. The rules are under "The 1.4.6 engine".
@@ -294,7 +301,7 @@ A Rename setup is an ordered list of **steps**. Each step runs on a file's **bas
 
 | Step | What it does | Starts as |
 |---|---|---|
-| Replace | Finds text and replaces it: plain text or a regular expression (where the replacement may use `$1`), match case on or off, every match or the first. Does nothing while Find is empty. | Every match on; match case off; regular expression off |
+| Replace | Titled `Replace "a" with "b"`, or `Remove "a"` when Replace with is empty. Finds text and replaces it: plain text or a regular expression (where the replacement may use `$1`), match case on or off, every match or the first. Does nothing while Find is empty. | Every match on; match case off; regular expression off |
 | Add text | Text at the start, text at the end, and optionally text inserted at position N (0 is before the first character). | All empty |
 | Remove | Characters N to M (1-based, inclusive), all digits, or the text between two markers, markers included (the first pair only). | Characters 1 to 1; markers `(` and `)` |
 | Trim spaces | Removes spaces at both ends and turns every run of spaces into one. | |
