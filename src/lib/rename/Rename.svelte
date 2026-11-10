@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { getCurrentWebview } from '@tauri-apps/api/webview';
-  import { onMount } from 'svelte';
   import { ui } from '../app.svelte';
   import ProfileBar from '../shared/ProfileBar.svelte';
   import { data } from '../shared/state.svelte';
@@ -11,9 +9,8 @@
   import Preview from './Preview.svelte';
   import RenameBar from './RenameBar.svelte';
   import RenameSettings from './RenameSettings.svelte';
-  import { addPaths, invalidate, pickProfile, plan, refresh, runBatch, saveProfile, session } from './session.svelte';
+  import { invalidate, pickProfile, plan, refresh, runBatch, saveProfile, session } from './session.svelte';
 
-  let dragging = $state(false);
   const sum = $derived(summary(plan.items, session.rules.destination));
 
   // re-read 150 ms after the files or the rules change (every step can change a name); conflicts only re-plan
@@ -36,18 +33,6 @@
     if (!session.files.length) session.picking = null;
   });
 
-  onMount(() => {
-    const off = getCurrentWebview().onDragDropEvent(({ payload: p }) => {
-      if (ui.tool !== 'rename' || ui.panel) return;
-      if (p.type === 'enter' || p.type === 'over') dragging = true;
-      else if (p.type === 'leave') dragging = false;
-      else {
-        dragging = false;
-        void addPaths(p.paths);
-      }
-    });
-    return () => void off.then((f) => f());
-  });
 </script>
 
 <section class="rename">
@@ -74,7 +59,6 @@
       <button class="btn primary" data-tour="apply" disabled={!sum.ops || session.loading || session.dirty || session.busy || !!island.activity} onclick={() => void runBatch()}>{sum.label}</button>
     </footer>
   {/if}
-  {#if dragging}<div class="drop" aria-hidden="true">Drop to add</div>{/if}
 </section>
 
 <style>
@@ -84,8 +68,4 @@
   footer { display: flex; align-items: center; gap: 10px; padding: 12px 0 16px; border-top: 1px solid var(--border); }
   .attn { height: 24px; padding: 0 10px; border: 0; border-radius: 999px; background: var(--warnsoft); color: var(--warn); font-size: 12px; font-weight: 600; }
   .grow { flex: 1; }
-  .drop {
-    position: fixed; inset: 72px 12px 12px; display: grid; place-items: center; pointer-events: none;
-    border: 2px dashed var(--accent); border-radius: 12px; background: var(--soft); color: var(--accent); font-weight: 600;
-  }
 </style>

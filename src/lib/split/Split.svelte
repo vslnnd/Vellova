@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { getCurrentWebview } from '@tauri-apps/api/webview';
-  import { onMount } from 'svelte';
   import { ui } from '../app.svelte';
   import DropZone from '../rename/DropZone.svelte';
   import ProfileBar from '../shared/ProfileBar.svelte';
@@ -9,11 +7,10 @@
   import type { Grid } from './engine/grid';
   import HeaderPicker from './HeaderPicker.svelte';
   import SplitBar from './SplitBar.svelte';
-  import { addPaths, invalidate, pickFiles, pickFolder, pickProfile, plan, refresh, runBatch, saveProfile, session } from './session.svelte';
+  import { invalidate, pickFiles, pickFolder, pickProfile, plan, refresh, runBatch, saveProfile, session } from './session.svelte';
   import SplitPreview from './SplitPreview.svelte';
   import SplitSettings from './SplitSettings.svelte';
 
-  let dragging = $state(false);
   /** `only`: opened from a file's row, so the row chosen is that file's alone */
   let picker = $state({ open: false, file: '', only: false });
 
@@ -51,18 +48,6 @@
     if (island.attentionTool === 'split' && !session.loading && !session.dirty && island.attention && island.attention !== n) send({ type: 'attention', count: n });
   });
 
-  onMount(() => {
-    const off = getCurrentWebview().onDragDropEvent(({ payload: p }) => {
-      if (ui.tool !== 'split' || ui.panel) return;
-      if (p.type === 'enter' || p.type === 'over') dragging = true;
-      else if (p.type === 'leave') dragging = false;
-      else {
-        dragging = false;
-        void addPaths(p.paths);
-      }
-    });
-    return () => void off.then((f) => f());
-  });
 
   /** From Options: the header row of every file (switches to a chosen row). From a file's row in the list: that file's only. */
   function choose(file?: string) {
@@ -93,7 +78,6 @@
       </button>
     </footer>
   {/if}
-  {#if dragging}<div class="drop" aria-hidden="true">Drop to add</div>{/if}
   <HeaderPicker bind:open={picker.open} bind:file={picker.file} only={picker.only} {grids} />
 </section>
 
@@ -104,8 +88,4 @@
   footer { display: flex; align-items: center; gap: 10px; padding: 12px 0 16px; border-top: 1px solid var(--border); }
   .attn { height: 24px; padding: 0 10px; border: 0; border-radius: 999px; background: var(--warnsoft); color: var(--warn); font-size: 12px; font-weight: 600; }
   .grow { flex: 1; }
-  .drop {
-    position: fixed; inset: 72px 12px 12px; display: grid; place-items: center; pointer-events: none;
-    border: 2px dashed var(--accent); border-radius: 12px; background: var(--soft); color: var(--accent); font-weight: 600;
-  }
 </style>

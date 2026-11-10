@@ -12,6 +12,7 @@
   import Rename from './lib/rename/Rename.svelte';
   import { addPaths as addRename, cancelActivity as cancelRename, session as renameSession } from './lib/rename/session.svelte';
   import { cancelTarget } from './lib/shell/cancel';
+  import DropLayer from './lib/shell/DropLayer.svelte';
   import Panel from './lib/shell/Panel.svelte';
   import { shortcut } from './lib/shell/shortcuts';
   import TitleBar from './lib/shell/TitleBar.svelte';
@@ -93,6 +94,7 @@
       {:else}<NeedsAttention />{/if}
     </Panel>
   {/if}
+  <DropLayer />
   <Tour />
 </div>
 
