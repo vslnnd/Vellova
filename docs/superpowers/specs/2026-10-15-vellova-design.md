@@ -179,6 +179,11 @@ States and timing:
 | Update ready | The download arrow drops in, then **nudges continuously**; "Update ready" plus Restart | After **3.5 s** it collapses to a download chip that nudges 3 times, then rests |
 | Restarting / Restored | Spinner "Restarting…" / "N names restored" | Transient |
 
+- **Zip** (Done state, and "Also make a .zip" under each tool's Options, saved with the profile):
+  - packs the files the batch made into one .zip in the folder they share: `Rename_yyyyMMdd_HHmm.zip` or `Split_…`, with ` (1)` when that name is taken. Files sorted into subfolders keep them inside the zip. Failed files and archived originals are left out, and the files themselves stay where they are.
+  - The zip joins the batch's journal, so Undo sends it to the Recycle Bin with the rest. A batch is zipped once; the button is offered while the newest batch has no zip and was not undone, and never during the tour.
+  - The island shows "Zipping k of N", then the batch's summary with "· zipped", Open folder, Open file (the zip) and Undo. If it fails, the island says "Couldn't zip" and points to History › Log; the batch is untouched.
+- **Open the folder when a batch is done** (Settings, off to start): after a batch, and after its zip, the folder of the batch's first file opens in Explorer.
 - **Open folder and Open file** (Done state):
   - Open folder opens the folder of the batch's first output file in Explorer. Open file opens that file itself and is offered only when the batch made exactly one file. Archived originals are never the target, and a batch that made nothing shows neither button.
   - The Done state stays while the pointer is over the island or keyboard focus is inside it; the 4 s count starts when both end.
@@ -229,6 +234,7 @@ States and timing:
     - *Files go:* Rename in place | Copy to | Move to. The last two add the folder, Choose… and "Sort into folders by" Value, Number and Date, which add `{value}`, `{n}` and `{date}` to the folder.
     - *If taken:* Add (1) | Skip | Replace (to the Recycle Bin).
     - *Matching files:* Rename too | Leave alone.
+    - *Also make a .zip.*
     - *Reset.*
 - **Command bar, Split:**
   - *Profile.*
@@ -241,6 +247,7 @@ States and timing:
     - *If taken:* Add (1) | Skip | Replace.
     - *File names:* the template, with its pieces as buttons that add them.
     - *Subfolder per group* (By value, and People with one file per person) and *Archive originals*.
+    - *Also make a .zip.*
     - *Reset.*
 - The **Options** button shows a dot when any setting under it is not the default.
 - **Reset** puts the rules back to the loaded profile (to the defaults when no profile is loaded), returns the left column to its summary and clears the file list. It is unavailable while a batch runs.
@@ -261,7 +268,7 @@ States and timing:
     - *Log:* every error and warning from the engines, workers and app, with time, tool, file, a plain-language message and expandable technical details. Filter by tool and severity; Export .txt. Never sent anywhere.
     - Each batch is a row with its summary, tool, time and profile, and Undo, Re-run, Show files and Export report on the row itself; the row opens to list its files.
   - **Profiles:** Rename and Split profiles as cards, each with its settings as labels and values (what is switched off is left out), Use, and Rename, Duplicate and Delete; JSON import/export, which also accepts old Nomina and Splitify profile files.
-  - **Settings:** one short list of a label and a control per line: Theme (Light | Dark | System); Check for updates (Every hour | Every 6 hours | Once a day | When Vellova starts | Never; a timed check also checks at start); the version with Check now and its result; Include subfolders when adding a folder to Rename; Archive originals after splitting; the Copy-to folder with Clear, once there is one; import of earlier data, when there is any; the tour; feedback (opens a GitHub issue).
+  - **Settings:** one short list of a label and a control per line: Theme (Light | Dark | System); Check for updates (Every hour | Every 6 hours | Once a day | When Vellova starts | Never; a timed check also checks at start); the version with Check now and its result; Open the folder when a batch is done; Include subfolders when adding a folder to Rename; Archive originals after splitting; the Copy-to folder with Clear, once there is one; import of earlier data, when there is any; the tour; feedback (opens a GitHub issue).
   - **Needs attention:** see Errors.
   - **Welcome:** first launch only; offers the migration.
 
