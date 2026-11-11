@@ -6,7 +6,9 @@
   import { chips, layer, layerText, noticeText, TIMEOUT_MS, type Layer, type Notice } from './island';
   import { island, send } from './islandState.svelte';
   import { switchTheme } from './theme';
-  import { holdDone } from '../tour/tour.svelte';
+  import { zipLast } from '../shared/zip';
+  import { canZip } from '../shared/zipPlan';
+  import { holdDone, tourActive } from '../tour/tour.svelte';
 
   let { oncancel, onundo, onrestart }: { oncancel: () => void; onundo: () => void; onrestart: () => void } = $props();
 
@@ -42,6 +44,9 @@
       send({ type: 'restored', text: "Couldn't open · see History › Log", keep: true });
     }
   }
+
+  /** the newest batch can still be packed into a .zip (not the tour's samples) */
+  const zippable = $derived(canZip(data.history[0]) && !tourActive());
 
   const toggle = (p: PanelName) => (ui.panel = ui.panel === p ? null : p);
   function review() {
@@ -128,6 +133,7 @@
         <button class="out" onclick={() => void openIt('folder')}>Open folder</button>
         {#if island.opened.file}<button class="out" onclick={() => void openIt('file')}>Open file</button>{/if}
       {/if}
+      {#if zippable}<button class="out" onclick={() => void zipLast()}>Zip</button>{/if}
       <button class="act" data-tour="undo" onclick={onundo}>Undo</button>
     </span>
   </div>

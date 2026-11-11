@@ -4,6 +4,7 @@ import { ipc, ipcReason, type OpResult } from '../shared/ipc';
 import { extOf, join, splitPath } from '../shared/names';
 import { REASONS } from '../shared/reasons';
 import { data, flush, log, save } from '../shared/state.svelte';
+import { afterBatch } from '../shared/zip';
 import { putBackBatch } from '../shared/store';
 import type { Batch, BatchItem, FileInfo, Op, Reason, SplitProfile, SplitRules } from '../shared/types';
 import { openTarget } from '../shell/island';
@@ -506,6 +507,7 @@ export async function runBatch(only?: string[]) {
   // the outputs only: an archived source is not something this batch made
   const open = openTarget(b.items.filter((i) => i.ok && !i.archived).map((i) => i.to));
   send({ type: 'finish', text: b.summary, attention: plan.items.filter((i) => i.status === 'attention').length, open, tool: 'split' });
+  await afterBatch(id, open, session.rules.zip);
 }
 
 export const applyFixes = () => runBatch([...session.fixed]);

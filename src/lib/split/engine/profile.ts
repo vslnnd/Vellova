@@ -49,6 +49,7 @@ export function splitRules(v: unknown): SplitRules {
     subfolder: bool(o.subfolder, d.subfolder),
     format: oneOf(o.format, ['same', 'xlsx', 'csv'], d.format),
     conflict: oneOf(o.conflict, ['add', 'skip', 'replace'], d.conflict),
+    ...(o.zip === true ? { zip: true as const } : {}),
   };
 }
 

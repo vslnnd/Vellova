@@ -82,6 +82,10 @@
 
 <div class="rows">
   <label class="item">
+    <span>Open the folder when a batch is done</span>
+    <input class="switch" type="checkbox" bind:checked={data.settings.openWhenDone} onchange={() => save('settings')} />
+  </label>
+  <label class="item">
     <span>Include subfolders when adding a folder to Rename</span>
     <input class="switch" type="checkbox" bind:checked={data.settings.rename.recursive} onchange={() => save('settings')} />
   </label>

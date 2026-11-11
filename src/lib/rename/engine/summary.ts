@@ -44,6 +44,7 @@ export function renameSummary(r: RenameRules): Summary {
       { key: 'dest', label: 'Files go', text: dest.mode === 'inplace' ? 'Rename in place' : `${dest.mode === 'copy' ? 'Copy' : 'Move'} to ${dest.folder}` },
       { key: 'conflict', label: 'If taken', text: { add: 'Add (1)', skip: 'Skip', replace: 'Replace' }[r.conflict] },
       { key: 'pair', label: 'Matching files', text: r.pair ? 'Renamed too' : 'Left alone' },
+      ...(r.zip ? [{ key: 'zip', label: 'Zip', text: 'On' }] : []),
     ],
   };
 }

@@ -28,8 +28,13 @@
   /** something under Options is not the default */
   const custom = $derived(
     rules.sheet !== null || rules.header.mode === 'manual' || rules.folder.mode === 'folder' || rules.format !== 'same' ||
-      rules.conflict !== 'add' || !!rules.template.trim() || (subfolders && rules.subfolder) || !!archiveFolder(),
+      rules.conflict !== 'add' || !!rules.template.trim() || (subfolders && rules.subfolder) || !!archiveFolder() || !!rules.zip,
   );
+
+  function setZip(on: boolean) {
+    if (on) session.rules.zip = true;
+    else delete session.rules.zip;
+  }
   let opts = $state<HTMLElement>();
 
   function setFolder(v: string) {
@@ -149,6 +154,10 @@
         {/if}
       </div>
     </div>
+    <label class="line">
+      <span class="label">Also make a .zip</span>
+      <input class="switch" type="checkbox" data-part="zip" checked={!!rules.zip} onchange={(e) => setZip(e.currentTarget.checked)} />
+    </label>
     <div class="line">
       <span></span>
       <button class="btn small" disabled={session.busy || !!island.activity} onclick={reset}>Reset</button>

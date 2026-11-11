@@ -17,5 +17,6 @@ export function splitSummary(r: SplitRules, archive: string | null): Summary {
   );
   if (r.mode === 'value' || (r.mode === 'people' && !assigned)) lines.push({ key: 'subfolders', label: 'Subfolders', text: r.subfolder ? 'One per group' : 'Off' });
   lines.push({ key: 'archive', label: 'Archive', text: archive ?? 'Off' });
+  if (r.zip) lines.push({ key: 'zip', label: 'Zip', text: 'On' });
   return { lines };
 }

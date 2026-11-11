@@ -50,6 +50,8 @@ export type RenameProfile = {
   pair: boolean;
   destination: Destination;
   conflict: Conflict;
+  /** also pack the batch's files into one .zip (absent: no) */
+  zip?: true;
 };
 
 export type SplitMode = 'value' | 'people' | 'rows' | 'parts' | 'sheets';
@@ -68,6 +70,8 @@ export type SplitRules = {
   folder: SplitFolder; subfolder: boolean;
   format: 'same' | 'xlsx' | 'csv';
   conflict: Conflict;
+  /** also pack the batch's files into one .zip (absent: no) */
+  zip?: true;
 };
 export type SplitProfile = { id: string; name: string; desc: string; rules: SplitRules; archiveFolder: string | null };
 
@@ -75,7 +79,8 @@ export type SplitProfile = { id: string; name: string; desc: string; rules: Spli
 export type Summary = { lines: { key: string; label: string; text: string }[] };
 
 /** `pending`: recorded before the batch ran and no result came back yet (the app stopped mid-batch). */
-export type BatchItem = { from: string; to: string; ok: boolean; reason?: Reason; pending?: boolean; archived?: true };
+/** `zip`: the .zip made of the batch's files (it has no `from`) */
+export type BatchItem = { from: string; to: string; ok: boolean; reason?: Reason; pending?: boolean; archived?: true; zip?: true };
 
 export type Batch = {
   id: string;
@@ -100,6 +105,8 @@ export type Settings = {
   updates: { onStartup: boolean; everyHours: number };
   rename: { folder: string; recursive: boolean };
   split: { archive: boolean; favourites: string[]; folder: string };
+  /** open the folder of a batch's files in Explorer when the batch is done */
+  openWhenDone: boolean;
   welcomed: boolean;
   tour: TourMarker | null;
 };

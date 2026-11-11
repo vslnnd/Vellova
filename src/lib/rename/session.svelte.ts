@@ -6,6 +6,7 @@ import { expandFolder, extOf, splitExt, splitPath } from '../shared/names';
 import { data, flush, log, save } from '../shared/state.svelte';
 import { REASONS } from '../shared/reasons';
 import { putBackBatch } from '../shared/store';
+import { afterBatch } from '../shared/zip';
 import type { FileInfo, Reason, RenameProfile, Step } from '../shared/types';
 import { openTarget } from '../shell/island';
 import { island, send } from '../shell/islandState.svelte';
@@ -498,6 +499,7 @@ export async function runBatch(only?: string[]) {
   // from the merged batch, so Open matches the summary after Apply fixes too
   const open = openTarget(b.items.filter((i) => i.ok).map((i) => i.to));
   send({ type: 'finish', text: b.summary, attention: plan.items.filter((i) => i.status === 'attention').length, open, tool: 'rename' });
+  await afterBatch(id, open, session.rules.zip);
 }
 
 export const applyFixes = () => runBatch([...session.fixed]);

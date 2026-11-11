@@ -135,7 +135,7 @@
             <ul>
               {#each b.items as it, i (i)}
                 <li>
-                  <span class="mono from">{it.from ? name(it.from) : '-'}</span>
+                  <span class="mono from">{it.zip ? 'Zip' : it.from ? name(it.from) : '-'}</span>
                   <span class="mono">{name(it.to)}</span>
                   {#if it.pending}
                     <span class="pill warn">Unfinished</span>

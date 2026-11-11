@@ -33,8 +33,10 @@ export async function undoBatch(id: string): Promise<void> {
     b.undone = r.skipped.length === 0;
     save('history');
     send({ type: 'stop' });
-    const what = b.tool === 'split' ? `${r.restored === 1 ? 'change' : 'changes'} undone` : `${r.restored === 1 ? 'name' : 'names'} restored`;
-    const text = `${r.restored} ${what}${r.skipped.length ? ` · ${r.skipped.length} skipped` : ''}`;
+    // the batch's zip went to the Recycle Bin with the rest: it is not one of the files counted
+    const n = Math.max(r.restored - b.items.filter((i) => i.zip && i.ok).length, 0);
+    const what = b.tool === 'split' ? `${n === 1 ? 'change' : 'changes'} undone` : `${n === 1 ? 'name' : 'names'} restored`;
+    const text = `${n} ${what}${r.skipped.length ? ` · ${r.skipped.length} skipped` : ''}`;
     send({ type: 'restored', text });
     log({ level: 'info', tool: b.tool, message: `Undo: ${text}.` });
   } catch (e) {

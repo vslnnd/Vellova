@@ -19,7 +19,12 @@
   const named = $derived(byName(rules.steps));
   const list = $derived(rules.steps[0]?.type === 'list');
   /** something under Options is not the default */
-  const custom = $derived(dest.mode !== 'inplace' || rules.conflict !== 'add' || (!named && !rules.pair));
+  const custom = $derived(dest.mode !== 'inplace' || rules.conflict !== 'add' || (!named && !rules.pair) || !!rules.zip);
+
+  function setZip(on: boolean) {
+    if (on) session.rules.zip = true;
+    else delete session.rules.zip;
+  }
 
   /** Step 1 becomes a PDF value or a list step; a source step of the other kind is replaced, a modifier stays after it. */
   async function nameFrom(kind: 'pdf' | 'list' | 'name') {
@@ -109,6 +114,10 @@
       </div>
     </div>
     {/if}
+    <label class="line">
+      <span class="label">Also make a .zip</span>
+      <input class="switch" type="checkbox" data-part="zip" checked={!!rules.zip} onchange={(e) => setZip(e.currentTarget.checked)} />
+    </label>
     <div class="line">
       <span></span>
       <button class="btn small" disabled={session.busy || !!island.activity} onclick={reset}>Reset</button>

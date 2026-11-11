@@ -13,7 +13,7 @@ export const DEFAULT_RULES: RenameRules = {
 };
 
 export function rulesFromProfile(p: RenameProfile): RenameRules {
-  return { steps: structuredClone(p.steps), pair: p.pair, destination: { ...p.destination }, conflict: p.conflict };
+  return { steps: structuredClone(p.steps), pair: p.pair, destination: { ...p.destination }, conflict: p.conflict, ...(p.zip ? { zip: true as const } : {}) };
 }
 
 /** A match number from a number input can be null, NaN or fractional: it is stored as a whole number, at least 1. */
@@ -23,7 +23,7 @@ export function matchNo(v: unknown): number {
 }
 
 export function profileFromRules(r: RenameRules, name: string, id: string, desc = ''): RenameProfile {
-  return { id, name, desc, steps: structuredClone(r.steps).map(healStep), pair: r.pair, destination: { ...r.destination }, conflict: r.conflict };
+  return { id, name, desc, steps: structuredClone(r.steps).map(healStep), pair: r.pair, destination: { ...r.destination }, conflict: r.conflict, ...(r.zip ? { zip: true as const } : {}) };
 }
 
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -95,5 +95,6 @@ export function renameProfile(v: unknown): RenameProfile | null {
     pair: typeof p.pair === 'boolean' ? p.pair : true,
     destination: (d.mode === 'copy' || d.mode === 'move') && str(d.folder) ? { mode: d.mode, folder: str(d.folder) } : { mode: 'inplace' },
     conflict: p.conflict === 'skip' || p.conflict === 'replace' ? p.conflict : 'add',
+    ...(p.zip === true ? { zip: true as const } : {}),
   };
 }

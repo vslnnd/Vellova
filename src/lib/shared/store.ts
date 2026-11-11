@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updates: { onStartup: true, everyHours: 6 },
   rename: { folder: '', recursive: false },
   split: { archive: false, favourites: [], folder: '' },
+  openWhenDone: false,
   welcomed: false,
   tour: null,
 };
@@ -33,6 +34,7 @@ export function withDefaults(v: unknown): Settings {
     updates: { ...DEFAULT_SETTINGS.updates, ...(isObj(s.updates) ? s.updates : {}) },
     rename: { ...DEFAULT_SETTINGS.rename, ...(isObj(s.rename) ? s.rename : {}) },
     split: splitSettings(s.split),
+    openWhenDone: s.openWhenDone === true,
     tour: isObj(s.tour) && typeof s.tour.dir === 'string' ? tourMarker(s.tour) : null,
   };
 }
@@ -120,9 +122,10 @@ export function logToText(entries: LogEntry[]): string {
 export const capHistory = (h: Batch[]) => h.slice(0, HISTORY_MAX);
 
 export function batchSummary(b: Batch): string {
-  const ok = b.items.filter((i) => i.ok).length;
-  const pending = b.items.filter((i) => i.pending).length;
-  const failed = b.items.length - ok - pending;
+  const items = b.items.filter((i) => !i.zip); // the zip is made of the batch's files, not one of them
+  const ok = items.filter((i) => i.ok).length;
+  const pending = items.filter((i) => i.pending).length;
+  const failed = items.length - ok - pending;
   const archived = b.items.filter((i) => i.ok && i.archived).length;
   return `${ok} ${ok === 1 ? 'file' : 'files'} ${b.verb}${archived ? ` · ${archived} archived` : ''}${failed ? ` · ${failed} failed` : ''}${pending ? ` · ${pending} unfinished` : ''}`;
 }
@@ -141,7 +144,7 @@ export function mergeBatch(history: Batch[], b: Batch): Batch[] {
     ? {
         ...prev,
         time: b.time,
-        items: [...prev.items.filter((i) => !replaced(i)), ...b.items],
+        items: [...prev.items.filter((i) => i.zip || !replaced(i)), ...b.items],
         undoable: prev.undoable || b.undoable,
       }
     : { ...b };
